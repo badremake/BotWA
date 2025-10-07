@@ -1,0 +1,65 @@
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3A49BD89B8DBCC8CF1E1',
+    participant: undefined
+  },
+  messageTimestamp: 1759847402,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'Hola',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Hola',
+  from: '5219612953369'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_6eb46f58-eb4e-42c0-bff1-0923e690eb79',
+  keyword: 'key_bbb2bb83-49b6-4e85-b8de-0a341c1252d5',
+  answer: '🙌 Hola bienvenido a este *Chatbot*',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: false
+  },
+  refSerialize: '20b8a765ec3a07751c913da80b887288'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_0fb1cd25-fa2d-4c3b-83e8-adb0f24e95d9',
+  keyword: 'ans_6eb46f58-eb4e-42c0-bff1-0923e690eb79',
+  answer: 'te comparto los siguientes links de interes sobre el proyecto\n' +
+    '👉 *doc* para ver la documentación\n' +
+    '👉 *gracias*  para ver la lista de videos\n' +
+    '👉 *discord* unirte al discord',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object]
+    ],
+    keyword: {},
+    callback: false
+  },
+  refSerialize: '6f1055fc8fa74d0b87ce156f5cc256b9'
+}
