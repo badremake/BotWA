@@ -30,32 +30,25 @@ const { contextMessages } = require('./services/context')
 const { handleSchedulingFlow } = require('./services/scheduling')
 const { sendChunkedMessages } = require('./services/message-utils')
 const { ensureInitialMenu, handleMenuRequest } = require('./services/menu')
-const { maybeReactToMessage } = require('./services/reactions')
 
-const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state, provider }) => {
+const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state }) => {
     const message = ctx?.body?.trim()
     if (!message) return
 
     const normalizedMessage = message.toLowerCase()
-    await maybeReactToMessage(ctx, provider)
-
     if (['reset', 'reiniciar', 'limpiar'].includes(normalizedMessage)) {
         await state.clear()
-        await sendChunkedMessages(
-            flowDynamic,
-            '🔄 He reiniciado nuestra conversación. ¿En qué puedo ayudarte ahora?',
-            { ctx, provider }
-        )
+        await sendChunkedMessages(flowDynamic, '🔄 He reiniciado nuestra conversación. ¿En qué puedo ayudarte ahora?')
         return
     }
 
-    await ensureInitialMenu(ctx, { flowDynamic, state, provider })
+    await ensureInitialMenu(ctx, { flowDynamic, state })
 
-    if (await handleMenuRequest(ctx, { flowDynamic, state, provider })) {
+    if (await handleMenuRequest(ctx, { flowDynamic, state })) {
         return
     }
 
-    if (await handleSchedulingFlow(ctx, { flowDynamic, state, provider })) {
+    if (await handleSchedulingFlow(ctx, { flowDynamic, state })) {
         return
     }
 
@@ -64,15 +57,14 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         const history = Array.isArray(userState?.geminiHistory) ? userState.geminiHistory : []
         const { reply, history: updatedHistory } = await getGeminiReply(message, history, contextMessages)
         await state.update({ geminiHistory: updatedHistory })
-        await sendChunkedMessages(flowDynamic, reply, { ctx, provider })
+        await sendChunkedMessages(flowDynamic, reply)
     } catch (error) {
         console.error('Gemini API error:', error)
 
         if (error.message === 'GEMINI_API_KEY_MISSING') {
             await sendChunkedMessages(
                 flowDynamic,
-                '⚠️ La clave de la API de Gemini no está configurada. Configura GEMINI_API_KEY en tu entorno y reinicia el bot.',
-                { ctx, provider }
+                '⚠️ La clave de la API de Gemini no está configurada. Configura GEMINI_API_KEY en tu entorno y reinicia el bot.'
             )
             return
         }
@@ -80,8 +72,7 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         if (error.message === 'GEMINI_FETCH_FAILED') {
             await sendChunkedMessages(
                 flowDynamic,
-                '⚠️ No pude comunicarme con el servicio de Gemini. Revisa tu conexión a internet y vuelve a intentarlo.',
-                { ctx, provider }
+                '⚠️ No pude comunicarme con el servicio de Gemini. Revisa tu conexión a internet y vuelve a intentarlo.'
             )
             return
         }
@@ -89,8 +80,7 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         if (error.message === 'GEMINI_EMPTY_RESPONSE') {
             await sendChunkedMessages(
                 flowDynamic,
-                '⚠️ No recibí ninguna respuesta de Gemini. Por favor intenta reformular tu mensaje.',
-                { ctx, provider }
+                '⚠️ No recibí ninguna respuesta de Gemini. Por favor intenta reformular tu mensaje.'
             )
             return
         }
@@ -98,8 +88,7 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         if (error.code === 401 || error.code === 403) {
             await sendChunkedMessages(
                 flowDynamic,
-                '⚠️ Gemini rechazó la solicitud. Verifica tu GEMINI_API_KEY y que la cuenta tenga acceso al modelo configurado.',
-                { ctx, provider }
+                '⚠️ Gemini rechazó la solicitud. Verifica tu GEMINI_API_KEY y que la cuenta tenga acceso al modelo configurado.'
             )
             return
         }
@@ -107,25 +96,19 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         if (error.code === 429) {
             await sendChunkedMessages(
                 flowDynamic,
-                '⚠️ Se alcanzó el límite de solicitudes de Gemini. Espera unos minutos antes de intentarlo de nuevo.',
-                { ctx, provider }
+                '⚠️ Se alcanzó el límite de solicitudes de Gemini. Espera unos minutos antes de intentarlo de nuevo.'
             )
             return
         }
 
         if (error.message) {
-            await sendChunkedMessages(
-                flowDynamic,
-                `⚠️ Gemini respondió con un error: ${error.message}`,
-                { ctx, provider }
-            )
+            await sendChunkedMessages(flowDynamic, `⚠️ Gemini respondió con un error: ${error.message}`)
             return
         }
 
         await sendChunkedMessages(
             flowDynamic,
-            '😔 Ocurrió un error al generar la respuesta. Intenta nuevamente en unos instantes.',
-            { ctx, provider }
+            '😔 Ocurrió un error al generar la respuesta. Intenta nuevamente en unos instantes.'
         )
     }
 })
