@@ -1,5 +1,6 @@
 const { businessInfo } = require('./context')
 const { createCalendarEvent, isCalendarConfigured } = require('./calendar')
+const { sendChunkedMessages } = require('./message-utils')
 
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Mexico_City'
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = Number(
@@ -90,6 +91,9 @@ const START_KEYWORDS = [
     /reservar\s+(una\s+)?(cita|llamada)/i,
 ]
 
+const BUSINESS_START_HOUR = 9
+const BUSINESS_END_HOUR = 15
+
 const CANCEL_KEYWORDS = [/cancelar/i, /ya\s+no/i]
 
 const resetSchedulingState = async (state) => {
@@ -100,11 +104,10 @@ const resetSchedulingState = async (state) => {
 
 const startSchedulingFlow = async (ctx, { flowDynamic, state }) => {
     if (!isCalendarConfigured()) {
-        await flowDynamic([
-            {
-                body: 'Por ahora no puedo agendar automáticamente porque falta configurar la conexión con Google Calendar. Contacta al equipo técnico para completar la configuración.',
-            },
-        ])
+        await sendChunkedMessages(
+            flowDynamic,
+            'Por ahora no puedo agendar automáticamente porque falta configurar la conexión con Google Calendar. Contacta al equipo técnico para completar la configuración.'
+        )
         return true
     }
 
@@ -117,21 +120,19 @@ const startSchedulingFlow = async (ctx, { flowDynamic, state }) => {
         },
     })
 
-    await flowDynamic([
-        {
-            body: '¡Perfecto! Empecemos con tu cita. ¿Cuál es tu nombre completo?',
-        },
-    ])
+    await sendChunkedMessages(
+        flowDynamic,
+        '¡Perfecto! Empecemos con tu cita. ¿Cuál es tu nombre completo?'
+    )
 
     return true
 }
 
 const handleCancellation = async ({ flowDynamic, state }) => {
-    await flowDynamic([
-        {
-            body: 'He cancelado el proceso de agenda. Si deseas retomarlo, solo escribe "Agendar cita" cuando quieras.',
-        },
-    ])
+    await sendChunkedMessages(
+        flowDynamic,
+        'He cancelado el proceso de agenda. Si deseas retomarlo, solo escribe "Agendar cita" cuando quieras.'
+    )
     await resetSchedulingState(state)
 }
 
@@ -153,6 +154,223 @@ const buildDescription = ({ name, email, notes, phone }) => {
     return lines.join('\n')
 }
 
+const buildDateFromOffset = (referenceDate, offsetDays) => {
+    const base = new Date(
+        Date.UTC(
+            referenceDate.getUTCFullYear(),
+            referenceDate.getUTCMonth(),
+            referenceDate.getUTCDate(),
+            0,
+            0,
+            0,
+            0
+        )
+    )
+    const candidate = new Date(base.getTime() + offsetDays * 24 * 60 * 60 * 1000)
+    return {
+        year: candidate.getUTCFullYear(),
+        month: candidate.getUTCMonth() + 1,
+        day: candidate.getUTCDate(),
+    }
+}
+
+const parseRelativeDate = (normalizedInput, referenceDate) => {
+    if (/pasado\s*mañana/.test(normalizedInput)) {
+        return buildDateFromOffset(referenceDate, 2)
+    }
+
+    if (/mañana/.test(normalizedInput)) {
+        return buildDateFromOffset(referenceDate, 1)
+    }
+
+    if (/(hoy|el\s+d[ií]a\s+de\s+hoy)/.test(normalizedInput)) {
+        return buildDateFromOffset(referenceDate, 0)
+    }
+
+    const inDaysMatch = normalizedInput.match(/en\s+(\d{1,2})\s+d[ií]as?/)
+    if (inDaysMatch) {
+        return buildDateFromOffset(referenceDate, Number(inDaysMatch[1]))
+    }
+
+    return null
+}
+
+const parseNumericDate = (normalizedInput, referenceDate) => {
+    const isoMatch = normalizedInput.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/)
+    if (isoMatch) {
+        const [, year, month, day] = isoMatch.map(Number)
+        return { parts: { year, month, day }, explicitYear: true }
+    }
+
+    const shortMatch = normalizedInput.match(/(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?/)
+    if (shortMatch) {
+        const day = Number(shortMatch[1])
+        const month = Number(shortMatch[2])
+        let year = shortMatch[3] ? Number(shortMatch[3]) : referenceDate.getUTCFullYear()
+
+        if (year < 100) {
+            year += 2000
+        }
+
+        return { parts: { year, month, day }, explicitYear: Boolean(shortMatch[3]) }
+    }
+
+    return null
+}
+
+const MONTH_NAME_TO_NUMBER = MONTH_NAMES.reduce((acc, name, index) => {
+    acc[name] = index + 1
+    return acc
+}, {})
+
+const parseTextualDate = (normalizedInput, referenceDate) => {
+    const monthRegex = new RegExp(`\b(${MONTH_NAMES.join('|')})\b`, 'i')
+    const monthMatch = normalizedInput.match(monthRegex)
+    if (!monthMatch) return null
+
+    const monthName = monthMatch[1].toLowerCase()
+    const month = MONTH_NAME_TO_NUMBER[monthName]
+
+    let day = null
+    const beforeRegex = new RegExp(`(\d{1,2})\s*(?:de\s+)?${monthName}`)
+    const beforeMatch = normalizedInput.match(beforeRegex)
+    if (beforeMatch) {
+        day = Number(beforeMatch[1])
+    }
+
+    if (day === null) {
+        const afterRegex = new RegExp(`${monthName}\s*(?:del\s+año\s+)?(\d{1,2})`)
+        const afterMatch = normalizedInput.match(afterRegex)
+        if (afterMatch) {
+            day = Number(afterMatch[1])
+        }
+    }
+
+    if (day === null) return null
+
+    const yearMatch = normalizedInput.match(/\b(\d{4})\b/)
+    const explicitYear = Boolean(yearMatch)
+    const year = yearMatch ? Number(yearMatch[1]) : referenceDate.getUTCFullYear()
+
+    return { parts: { year, month, day }, explicitYear }
+}
+
+const ensureFutureDate = (parts, explicitYear, referenceDate) => {
+    const candidate = parseDateParts(
+        `${parts.year}-${padNumber(parts.month)}-${padNumber(parts.day)}`
+    )
+    if (!candidate) return null
+
+    if (explicitYear) return candidate
+
+    const referenceUTC = Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate()
+    )
+
+    let candidateUTC = Date.UTC(candidate.year, candidate.month - 1, candidate.day)
+    if (candidateUTC < referenceUTC) {
+        const updated = parseDateParts(
+            `${candidate.year + 1}-${padNumber(candidate.month)}-${padNumber(candidate.day)}`
+        )
+        if (updated) {
+            candidateUTC = Date.UTC(updated.year, updated.month - 1, updated.day)
+            return updated
+        }
+    }
+
+    return candidate
+}
+
+const parseFlexibleDateInput = (input, referenceDate = new Date()) => {
+    if (!input) return null
+
+    const normalized = input.trim().toLowerCase()
+    if (!normalized) return null
+
+    const relativeResult = parseRelativeDate(normalized, referenceDate)
+    if (relativeResult) return relativeResult
+
+    const numericResult = parseNumericDate(normalized, referenceDate)
+    if (numericResult) {
+        return ensureFutureDate(numericResult.parts, numericResult.explicitYear, referenceDate)
+    }
+
+    const textualResult = parseTextualDate(normalized, referenceDate)
+    if (textualResult) {
+        return ensureFutureDate(textualResult.parts, textualResult.explicitYear, referenceDate)
+    }
+
+    return null
+}
+
+const isWithinBusinessHours = (hour, minute) => {
+    if (hour < BUSINESS_START_HOUR) return false
+    if (hour > BUSINESS_END_HOUR) return false
+    if (hour === BUSINESS_END_HOUR && minute > 0) return false
+    return true
+}
+
+const parseFlexibleTimeInput = (input) => {
+    if (!input) return { status: 'invalid' }
+
+    const normalized = input.trim().toLowerCase()
+    if (!normalized) return { status: 'invalid' }
+
+    const timeMatch = normalized.match(/(\d{1,2})(?:[:h\.](\d{2}))?/)
+    if (!timeMatch) return { status: 'invalid' }
+
+    let hour = Number(timeMatch[1])
+    const minute = timeMatch[2] ? Number(timeMatch[2]) : 0
+
+    if (Number.isNaN(hour) || Number.isNaN(minute) || minute > 59) {
+        return { status: 'invalid' }
+    }
+
+    const mentionsAfternoon = /(pm|p\.m|tarde|noche)/.test(normalized)
+    const mentionsMorning = /(am|a\.m|mañana|madrugada|temprano)/.test(normalized)
+
+    if (mentionsAfternoon && hour < 12) {
+        hour += 12
+    }
+
+    if (mentionsMorning && hour === 12) {
+        hour = 0
+    }
+
+    if (!mentionsAfternoon && !mentionsMorning && hour <= 12) {
+        if (hour < BUSINESS_START_HOUR && hour !== 0) {
+            const suggestedHour = hour + 12 <= 23 ? hour + 12 : hour
+            return {
+                status: 'clarify',
+                suggestion: {
+                    hour: suggestedHour,
+                    minute,
+                },
+            }
+        }
+    }
+
+    if (hour > 23) {
+        return { status: 'invalid' }
+    }
+
+    if (!isWithinBusinessHours(hour, minute)) {
+        return {
+            status: 'out_of_range',
+            hour,
+            minute,
+        }
+    }
+
+    return {
+        status: 'ok',
+        hour,
+        minute,
+    }
+}
+
 const finalizeScheduling = async (ctx, tools, scheduling) => {
     const { flowDynamic, state } = tools
     const { name, email, date, time, notes, phone, timeZone } = scheduling.data
@@ -162,11 +380,10 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
     const timeParts = parseTimeParts(time)
 
     if (!dateParts || !timeParts) {
-        await flowDynamic([
-            {
-                body: 'No pude interpretar la fecha y hora proporcionadas. Revisa el formato (AAAA-MM-DD para la fecha y HH:MM en formato de 24 horas) e intenta nuevamente.',
-            },
-        ])
+        await sendChunkedMessages(
+            flowDynamic,
+            'No pude interpretar la fecha y hora proporcionadas. Revisa el formato (AAAA-MM-DD para la fecha y HH:MM en formato de 24 horas) e intenta nuevamente.'
+        )
         await state.update({
             scheduling: {
                 ...scheduling,
@@ -194,30 +411,33 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
             ],
         })
 
-        await flowDynamic([
-            {
-                body: `¡Listo! Tu cita quedó agendada para el ${formatDateForHumans(
-                    dateParts
-                )} a las ${formatTimeForHumans(timeParts)} (${zone}). Te enviaremos la confirmación al correo ${email}. ${
-                    event.htmlLink ? `Puedes revisar el detalle aquí: ${event.htmlLink}` : ''
-                }`,
-            },
-        ])
+        const confirmationMessages = [
+            `¡Listo! Tu cita quedó agendada para el ${formatDateForHumans(
+                dateParts
+            )} a las ${formatTimeForHumans(timeParts)} (${zone}).`,
+        ]
+
+        const extraDetails = [`Te enviaremos la confirmación al correo ${email}.`]
+        if (event.htmlLink) {
+            extraDetails.push(`Puedes revisar el detalle aquí: ${event.htmlLink}`)
+        }
+
+        confirmationMessages.push(extraDetails.join(' '))
+
+        await sendChunkedMessages(flowDynamic, confirmationMessages)
     } catch (error) {
         console.error('Error al crear evento en Google Calendar:', error)
 
         if (error.message === 'GOOGLE_CALENDAR_MISSING_CONFIG') {
-            await flowDynamic([
-                {
-                    body: 'No logré conectar con Google Calendar porque la configuración está incompleta. Por favor, solicita al equipo técnico completar las variables de entorno necesarias y vuelve a intentarlo.',
-                },
-            ])
+            await sendChunkedMessages(
+                flowDynamic,
+                'No logré conectar con Google Calendar porque la configuración está incompleta. Por favor, solicita al equipo técnico completar las variables de entorno necesarias y vuelve a intentarlo.'
+            )
         } else {
-            await flowDynamic([
-                {
-                    body: 'Ocurrió un inconveniente al crear la cita. Notificaré al equipo para que continúe el proceso contigo manualmente.',
-                },
-            ])
+            await sendChunkedMessages(
+                flowDynamic,
+                'Ocurrió un inconveniente al crear la cita. Notificaré al equipo para que continúe el proceso contigo manualmente.'
+            )
         }
     }
 
@@ -247,11 +467,10 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 },
             })
 
-            await flowDynamic([
-                {
-                    body: 'Gracias. ¿Cuál es tu correo electrónico para enviarte la confirmación?',
-                },
-            ])
+            await sendChunkedMessages(
+                flowDynamic,
+                'Gracias. ¿Cuál es tu correo electrónico para enviarte la confirmación?'
+            )
 
             return true
         }
@@ -260,11 +479,10 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
             if (!emailRegex.test(email)) {
-                await flowDynamic([
-                    {
-                        body: 'Parece que el correo no es válido. Intenta nuevamente con un formato como nombre@dominio.com.',
-                    },
-                ])
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Parece que el correo no es válido. Intenta nuevamente con un formato como nombre@dominio.com.'
+                )
                 return true
             }
 
@@ -278,59 +496,74 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 },
             })
 
-            await flowDynamic([
-                {
-                    body: 'Perfecto. ¿Para qué fecha necesitas la llamada? Escríbela en formato AAAA-MM-DD.',
-                },
-            ])
+            await sendChunkedMessages(
+                flowDynamic,
+                'Perfecto. ¿Para qué fecha necesitas la llamada? Puedes escribirla como “15 de mayo”, “15/05” o con tu formato preferido.'
+            )
 
             return true
         }
         case 'collectDate': {
-            const date = message
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+            const referenceDate = new Date()
+            const parsedDate = parseFlexibleDateInput(message, referenceDate)
 
-            if (!dateRegex.test(date)) {
-                await flowDynamic([
-                    {
-                        body: 'Para registrar la fecha necesito el formato AAAA-MM-DD. Por ejemplo: 2024-05-15.',
-                    },
-                ])
+            if (!parsedDate) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'No logré interpretar esa fecha. Puedes decirme “15 de mayo”, “15/05/2024” o frases como “mañana”.'
+                )
                 return true
             }
 
+            const normalizedDate = `${parsedDate.year}-${padNumber(parsedDate.month)}-${padNumber(
+                parsedDate.day
+            )}`
             await state.update({
                 scheduling: {
                     step: 'collectTime',
                     data: {
                         ...scheduling.data,
-                        date,
+                        date: normalizedDate,
                     },
                 },
             })
 
-            await flowDynamic([
-                {
-                    body: `¿A qué hora te viene mejor? Indícala en formato 24 horas HH:MM (por ejemplo, 15:30). Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo aquí.`,
-                },
-            ])
+            await sendChunkedMessages(
+                flowDynamic,
+                `Tomé nota para el ${formatDateForHumans(parsedDate)}. ¿A qué hora te viene mejor? Puedes decir “1 pm”, “13:30” o “mediodía”. Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo.`
+            )
 
             return true
         }
         case 'collectTime': {
-            const timeMatch = message.match(/\b(\d{2}:\d{2})\b/)
             const timezoneMatch = message.match(/GMT[+-]\d{1,2}|UTC[+-]\d{1,2}|[A-Za-z]+\/[A-Za-z_]+/)
+            const parsedTime = parseFlexibleTimeInput(message)
 
-            if (!timeMatch) {
-                await flowDynamic([
-                    {
-                        body: 'Necesito la hora en formato 24 horas HH:MM. Por ejemplo, 09:00 o 16:45.',
-                    },
-                ])
+            if (parsedTime.status === 'invalid') {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'No logré interpretar la hora. Dime algo como “11:30”, “1 pm” o “13 horas”.'
+                )
                 return true
             }
 
-            const time = timeMatch[1]
+            if (parsedTime.status === 'clarify') {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    `¿Te refieres a las ${formatTimeForHumans(parsedTime.suggestion)}? Nuestro horario de atención es de 09:00 a 15:00. Elige un horario dentro de ese rango, por favor.`
+                )
+                return true
+            }
+
+            if (parsedTime.status === 'out_of_range') {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    `El horario ${formatTimeForHumans(parsedTime)} queda fuera de nuestro servicio. Podemos atenderte entre 09:00 y 15:00. Indícame otra hora dentro de ese rango.`
+                )
+                return true
+            }
+
+            const time = `${padNumber(parsedTime.hour)}:${padNumber(parsedTime.minute)}`
             let timeZone = DEFAULT_TIMEZONE
             if (timezoneMatch) {
                 const rawZone = timezoneMatch[0]
@@ -354,11 +587,10 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 },
             })
 
-            await flowDynamic([
-                {
-                    body: '¿Hay algo adicional que debamos tener en cuenta para la llamada? Puedes escribir "No" si no es necesario.',
-                },
-            ])
+            await sendChunkedMessages(
+                flowDynamic,
+                '¿Hay algo adicional que debamos tener en cuenta para la llamada? Puedes escribir "No" si no es necesario.'
+            )
 
             return true
         }
