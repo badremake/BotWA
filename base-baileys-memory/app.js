@@ -60,6 +60,51 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             return
         }
 
+        if (error.message === 'GEMINI_FETCH_FAILED') {
+            await flowDynamic([
+                {
+                    body: '⚠️ No pude comunicarme con el servicio de Gemini. Revisa tu conexión a internet y vuelve a intentarlo.',
+                },
+            ])
+            return
+        }
+
+        if (error.message === 'GEMINI_EMPTY_RESPONSE') {
+            await flowDynamic([
+                {
+                    body: '⚠️ No recibí ninguna respuesta de Gemini. Por favor intenta reformular tu mensaje.',
+                },
+            ])
+            return
+        }
+
+        if (error.code === 401 || error.code === 403) {
+            await flowDynamic([
+                {
+                    body: '⚠️ Gemini rechazó la solicitud. Verifica tu GEMINI_API_KEY y que la cuenta tenga acceso al modelo configurado.',
+                },
+            ])
+            return
+        }
+
+        if (error.code === 429) {
+            await flowDynamic([
+                {
+                    body: '⚠️ Se alcanzó el límite de solicitudes de Gemini. Espera unos minutos antes de intentarlo de nuevo.',
+                },
+            ])
+            return
+        }
+
+        if (error.message) {
+            await flowDynamic([
+                {
+                    body: `⚠️ Gemini respondió con un error: ${error.message}`,
+                },
+            ])
+            return
+        }
+
         await flowDynamic([
             {
                 body: '😔 Ocurrió un error al generar la respuesta. Intenta nuevamente en unos instantes.',
