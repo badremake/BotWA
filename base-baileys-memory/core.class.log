@@ -2,10 +2,10 @@
   key: {
     remoteJid: '5219612953369@s.whatsapp.net',
     fromMe: false,
-    id: '3A49BD89B8DBCC8CF1E1',
+    id: '3AFF0E30A0938E3D181E',
     participant: undefined
   },
-  messageTimestamp: 1759847402,
+  messageTimestamp: 1759853822,
   pushName: 'Andrés',
   broadcast: false,
   message: Message {
@@ -20,9 +20,9 @@
   from: '5219612953369'
 }
 [QUEUE_SE_ENVIO]:  {
-  ref: 'ans_6eb46f58-eb4e-42c0-bff1-0923e690eb79',
-  keyword: 'key_bbb2bb83-49b6-4e85-b8de-0a341c1252d5',
-  answer: '🙌 Hola bienvenido a este *Chatbot*',
+  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
+  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  answer: '__call_action__',
   options: {
     media: null,
     buttons: [],
@@ -33,17 +33,35 @@
     ref: null,
     nested: [],
     keyword: {},
-    callback: false
+    callback: true
   },
-  refSerialize: '20b8a765ec3a07751c913da80b887288'
+  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3A84AE8DBFE5069C12A3',
+    participant: undefined
+  },
+  messageTimestamp: 1759853835,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'De qué es este número de WhatsApp',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'De qué es este número de WhatsApp',
+  from: '5219612953369'
 }
 [QUEUE_SE_ENVIO]:  {
-  ref: 'ans_0fb1cd25-fa2d-4c3b-83e8-adb0f24e95d9',
-  keyword: 'ans_6eb46f58-eb4e-42c0-bff1-0923e690eb79',
-  answer: 'te comparto los siguientes links de interes sobre el proyecto\n' +
-    '👉 *doc* para ver la documentación\n' +
-    '👉 *gracias*  para ver la lista de videos\n' +
-    '👉 *discord* unirte al discord',
+  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
+  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  answer: '__call_action__',
   options: {
     media: null,
     buttons: [],
@@ -52,14 +70,170 @@
     delay: 0,
     idle: null,
     ref: null,
-    nested: [
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object]
-    ],
+    nested: [],
     keyword: {},
-    callback: false
+    callback: true
   },
-  refSerialize: '6f1055fc8fa74d0b87ce156f5cc256b9'
+  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219611527386@s.whatsapp.net',
+    fromMe: false,
+    id: 'AC46AF46503DB23AEA099BCC136BB200',
+    participant: undefined
+  },
+  messageTimestamp: 1759856738,
+  pushName: 'Vania Sánchez 🕉️💗',
+  broadcast: false,
+  message: Message {
+    extendedTextMessage: ExtendedTextMessage {
+      text: 'Hola',
+      previewType: 0,
+      contextInfo: [ContextInfo],
+      inviteLinkGroupTypeV2: 0
+    },
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Hola',
+  from: '5219611527386'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
+  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219611527386@s.whatsapp.net',
+    fromMe: false,
+    id: 'AC849676A6F81595F998127AB71CD78C',
+    participant: undefined
+  },
+  messageTimestamp: 1759856778,
+  pushName: 'Vania Sánchez 🕉️💗',
+  broadcast: false,
+  message: Message {
+    conversation: 'Que color da verde y amarillo',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Que color da verde y amarillo',
+  from: '5219611527386'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
+  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219611527386@s.whatsapp.net',
+    fromMe: false,
+    id: 'AC112DE5DB390498CF96C548D042CFFC',
+    participant: undefined
+  },
+  messageTimestamp: 1759856836,
+  pushName: 'Vania Sánchez 🕉️💗',
+  broadcast: false,
+  message: Message {
+    conversation: 'Qué es la homologación de la carrera de enfermería hacia EU',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Qué es la homologación de la carrera de enfermería hacia EU',
+  from: '5219611527386'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
+  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219611527386@s.whatsapp.net',
+    fromMe: false,
+    id: 'AC0015CEDCA3FABEEC2B081CB5285466',
+    participant: undefined
+  },
+  messageTimestamp: 1759856876,
+  pushName: 'Vania Sánchez 🕉️💗',
+  broadcast: false,
+  message: Message {
+    conversation: 'Y hacia Estados Unidos',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Y hacia Estados Unidos',
+  from: '5219611527386'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
+  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
 }
