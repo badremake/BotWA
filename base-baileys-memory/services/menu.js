@@ -14,63 +14,47 @@ const OPTION_MAPPINGS = [
     },
     {
         keywords: ['2', 'dos', 'requisitos', 'documentos', 'pasos'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(
-                flowDynamic,
-                [
-                    'Estos son los requisitos clave para iniciar la homologación: título o cédula en enfermería y pasaporte vigente.',
-                    'También necesitaremos certificados de materias y práctica clínica. Si falta algo, te guiamos para reunirlo paso a paso.',
-                ],
-                { ctx, provider }
-            )
+        handler: async (_ctx, { flowDynamic }) => {
+            await sendChunkedMessages(flowDynamic, [
+                'Estos son los requisitos clave para iniciar la homologación: título o cédula en enfermería y pasaporte vigente.',
+                'También necesitaremos certificados de materias y práctica clínica. Si falta algo, te guiamos para reunirlo paso a paso.',
+            ])
             return true
         },
     },
     {
         keywords: ['3', 'tres', 'beneficios', 'apoyo'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(
-                flowDynamic,
-                [
-                    'Al homologar con nosotros recibes acompañamiento personalizado, simulacros de examen y asesoría para trámites migratorios.',
-                    'Nuestro equipo te prepara para entrevistas laborales y te conecta con aliados en Estados Unidos para acelerar tu contratación.',
-                ],
-                { ctx, provider }
-            )
+        handler: async (_ctx, { flowDynamic }) => {
+            await sendChunkedMessages(flowDynamic, [
+                'Al homologar con nosotros recibes acompañamiento personalizado, simulacros de examen y asesoría para trámites migratorios.',
+                'Nuestro equipo te prepara para entrevistas laborales y te conecta con aliados en Estados Unidos para acelerar tu contratación.',
+            ])
             return true
         },
     },
     {
         keywords: ['4', 'cuatro', 'costos', 'precio', 'pago', 'financiamiento'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(
-                flowDynamic,
-                [
-                    'El programa cuenta con planes de pago flexibles y opciones de financiamiento. Ajustamos la inversión a tu situación.',
-                    'En la llamada de orientación revisamos becas disponibles y promociones activas para que avances con tranquilidad.',
-                ],
-                { ctx, provider }
-            )
+        handler: async (_ctx, { flowDynamic }) => {
+            await sendChunkedMessages(flowDynamic, [
+                'El programa cuenta con planes de pago flexibles y opciones de financiamiento. Ajustamos la inversión a tu situación.',
+                'En la llamada de orientación revisamos becas disponibles y promociones activas para que avances con tranquilidad.',
+            ])
             return true
         },
     },
     {
         keywords: ['5', 'cinco', 'horarios', 'contacto', 'ubicación'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(
-                flowDynamic,
-                [
-                    `Atendemos de lunes a viernes de 9:00 a 15:00 (hora Ciudad de México).`,
-                    `Toda la asesoría es en línea, así que te ayudamos sin importar dónde te encuentres. Escríbenos cuando necesites apoyo.`,
-                ],
-                { ctx, provider }
-            )
+        handler: async (_ctx, { flowDynamic }) => {
+            await sendChunkedMessages(flowDynamic, [
+                `Atendemos de lunes a viernes de 9:00 a 15:00 (hora Ciudad de México).`,
+                `Toda la asesoría es en línea, así que te ayudamos sin importar dónde te encuentres. Escríbenos cuando necesites apoyo.`,
+            ])
             return true
         },
     },
 ]
 
-const sendMenu = async ({ flowDynamic, provider }, { ctx, includeGreeting = false } = {}) => {
+const sendMenu = async ({ flowDynamic }, { includeGreeting = false } = {}) => {
     const messages = []
 
     if (includeGreeting) {
@@ -81,10 +65,11 @@ const sendMenu = async ({ flowDynamic, provider }, { ctx, includeGreeting = fals
     }
 
     messages.push(
-        'Menú principal:\n\n1️⃣ Agendar cita\n\n2️⃣ Requisitos y pasos\n\n3️⃣ Beneficios del programa\n\n4️⃣ Costos y apoyos\n\n5️⃣ Horarios y contacto\n\nEscribe el número o pídeme la opción con tus palabras.'
+        'Menú principal:\n1️⃣ Agendar cita\n2️⃣ Requisitos y pasos\n3️⃣ Beneficios del programa',
+        '4️⃣ Costos y apoyos\n5️⃣ Horarios y contacto\nEscribe el número o pídeme la opción con tus palabras.'
     )
 
-    await sendChunkedMessages(flowDynamic, messages, { ctx, provider })
+    await sendChunkedMessages(flowDynamic, messages)
 }
 
 const ensureInitialMenu = async (ctx, tools) => {
@@ -93,7 +78,7 @@ const ensureInitialMenu = async (ctx, tools) => {
 
     if (myState.hasReceivedMenu) return false
 
-    await sendMenu(tools, { ctx, includeGreeting: true })
+    await sendMenu(tools, { includeGreeting: true })
     await state.update({
         ...myState,
         hasReceivedMenu: true,
@@ -107,7 +92,7 @@ const handleMenuRequest = async (ctx, tools) => {
     if (!message) return false
 
     if (MENU_KEYWORDS.some((keyword) => message.includes(keyword))) {
-        await sendMenu(tools, { ctx })
+        await sendMenu(tools)
         return true
     }
 
