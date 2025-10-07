@@ -49,13 +49,14 @@ const parseGeminiResponse = (payload) => {
     return cleanResponse(parts.join('\n'))
 }
 
-const getGeminiReply = async (message, history = []) => {
+const getGeminiReply = async (message, history = [], context = []) => {
     if (!API_KEY) {
         throw new Error('GEMINI_API_KEY_MISSING')
     }
 
     const sanitizedHistory = sanitizeHistory(history)
-    const contents = [...sanitizedHistory, buildHistoryEntry('user', message)]
+    const sanitizedContext = sanitizeHistory(context)
+    const contents = [...sanitizedContext, ...sanitizedHistory, buildHistoryEntry('user', message)]
 
     let response
     try {

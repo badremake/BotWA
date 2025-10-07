@@ -26,6 +26,8 @@ const BaileysProvider = require('@bot-whatsapp/provider/baileys')
 const MockAdapter = require('@bot-whatsapp/database/mock')
 
 const { getGeminiReply } = require('./services/gemini')
+const { contextMessages } = require('./services/context')
+const { handleSchedulingFlow } = require('./services/scheduling')
 
 const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state }) => {
     const message = ctx?.body?.trim()
@@ -42,10 +44,14 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         return
     }
 
+    if (await handleSchedulingFlow(ctx, { flowDynamic, state })) {
+        return
+    }
+
     try {
         const userState = state.getMyState() || {}
         const history = Array.isArray(userState?.geminiHistory) ? userState.geminiHistory : []
-        const { reply, history: updatedHistory } = await getGeminiReply(message, history)
+        const { reply, history: updatedHistory } = await getGeminiReply(message, history, contextMessages)
         await state.update({ geminiHistory: updatedHistory })
         await flowDynamic([{ body: reply }])
     } catch (error) {

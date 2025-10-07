@@ -14,6 +14,19 @@ cp .env.example .env # edita el archivo y coloca tu GEMINI_API_KEY
 npm start
 ```
 
+### Personalizar el contexto del asistente
+
+- Edita `services/context.js` para actualizar la descripción del negocio, horarios, enlaces y frases clave que activan el flujo de agenda.
+- El archivo exporta `contextMessages`, que se envía como contexto base a Gemini en cada respuesta.
+
+### Configurar la agenda con Google Calendar
+
+1. Crea o reutiliza un proyecto en Google Cloud y habilita la **Google Calendar API**.
+2. Configura una credencial de **OAuth 2.0** para aplicaciones externas y genera un token de actualización con el alcance `https://www.googleapis.com/auth/calendar.events`.
+3. Copia las variables necesarias (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_CALENDAR_ID`, etc.) en tu `.env`.
+4. Ajusta el huso horario y la duración por defecto de la cita en `.env` mediante `DEFAULT_TIMEZONE` y `DEFAULT_APPOINTMENT_DURATION_MINUTES`.
+5. Una vez configurado, los usuarios pueden escribir "Agendar cita" o "Reservar cita" para iniciar el flujo automatizado que solicitará datos y registrará la cita en tu calendario.
+
 ### Configurar Gemini
 
 1. Copia el archivo `.env.example` a `.env` y agrega tu clave real de Gemini en `GEMINI_API_KEY`.
