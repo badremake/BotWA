@@ -1,73 +1,79 @@
-const { createBot, createProvider, createFlow, addKeyword } = require('@bot-whatsapp/bot')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const loadEnvironment = () => {
+    const envPath = path.join(__dirname, '.env')
+    if (!fs.existsSync(envPath)) return
+
+    const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
+    for (const line of lines) {
+        if (!line || /^\s*#/.test(line)) continue
+        const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i)
+        if (!match) continue
+        const [, key, rawValue] = match
+        if (process.env[key]) continue
+        const value = rawValue.replace(/^['"]|['"]$/g, '')
+        process.env[key] = value
+    }
+}
+
+loadEnvironment()
+
+const { createBot, createProvider, createFlow, addKeyword, EVENTS } = require('@bot-whatsapp/bot')
 
 const QRPortalWeb = require('@bot-whatsapp/portal')
 const BaileysProvider = require('@bot-whatsapp/provider/baileys')
 const MockAdapter = require('@bot-whatsapp/database/mock')
 
-const flowSecundario = addKeyword(['2', 'siguiente']).addAnswer(['📄 Aquí tenemos el flujo secundario'])
+const { getGeminiReply } = require('./services/gemini')
 
-const flowDocs = addKeyword(['doc', 'documentacion', 'documentación']).addAnswer(
-    [
-        '📄 Aquí encontras las documentación recuerda que puedes mejorarla',
-        'https://bot-whatsapp.netlify.app/',
-        '\n*2* Para siguiente paso.',
-    ],
-    null,
-    null,
-    [flowSecundario]
-)
+const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state }) => {
+    const message = ctx?.body?.trim()
+    if (!message) return
 
-const flowTuto = addKeyword(['tutorial', 'tuto']).addAnswer(
-    [
-        '🙌 Aquí encontras un ejemplo rapido',
-        'https://bot-whatsapp.netlify.app/docs/example/',
-        '\n*2* Para siguiente paso.',
-    ],
-    null,
-    null,
-    [flowSecundario]
-)
+    const normalizedMessage = message.toLowerCase()
+    if (['reset', 'reiniciar', 'limpiar'].includes(normalizedMessage)) {
+        await state.clear()
+        await flowDynamic([
+            {
+                body: '🔄 He reiniciado nuestra conversación. ¿En qué puedo ayudarte ahora?',
+            },
+        ])
+        return
+    }
 
-const flowGracias = addKeyword(['gracias', 'grac']).addAnswer(
-    [
-        '🚀 Puedes aportar tu granito de arena a este proyecto',
-        '[*opencollective*] https://opencollective.com/bot-whatsapp',
-        '[*buymeacoffee*] https://www.buymeacoffee.com/leifermendez',
-        '[*patreon*] https://www.patreon.com/leifermendez',
-        '\n*2* Para siguiente paso.',
-    ],
-    null,
-    null,
-    [flowSecundario]
-)
+    try {
+        const userState = state.getMyState() || {}
+        const history = Array.isArray(userState?.geminiHistory) ? userState.geminiHistory : []
+        const { reply, history: updatedHistory } = await getGeminiReply(message, history)
+        await state.update({ geminiHistory: updatedHistory })
+        await flowDynamic([{ body: reply }])
+    } catch (error) {
+        console.error('Gemini API error:', error)
 
-const flowDiscord = addKeyword(['discord']).addAnswer(
-    ['🤪 Únete al discord', 'https://link.codigoencasa.com/DISCORD', '\n*2* Para siguiente paso.'],
-    null,
-    null,
-    [flowSecundario]
-)
+        if (error.message === 'GEMINI_API_KEY_MISSING') {
+            await flowDynamic([
+                {
+                    body: '⚠️ La clave de la API de Gemini no está configurada. Configura GEMINI_API_KEY en tu entorno y reinicia el bot.',
+                },
+            ])
+            return
+        }
 
-const flowPrincipal = addKeyword(['hola', 'ole', 'alo'])
-    .addAnswer('🙌 Hola bienvenido a este *Chatbot*')
-    .addAnswer(
-        [
-            'te comparto los siguientes links de interes sobre el proyecto',
-            '👉 *doc* para ver la documentación',
-            '👉 *gracias*  para ver la lista de videos',
-            '👉 *discord* unirte al discord',
-        ],
-        null,
-        null,
-        [flowDocs, flowGracias, flowTuto, flowDiscord]
-    )
+        await flowDynamic([
+            {
+                body: '😔 Ocurrió un error al generar la respuesta. Intenta nuevamente en unos instantes.',
+            },
+        ])
+    }
+})
 
 const main = async () => {
     const adapterDB = new MockAdapter()
-    const adapterFlow = createFlow([flowPrincipal])
+    const adapterFlow = createFlow([flowGemini])
     const adapterProvider = createProvider(BaileysProvider)
 
-    createBot({
+    await createBot({
         flow: adapterFlow,
         provider: adapterProvider,
         database: adapterDB,
