@@ -1,4 +1,4 @@
-const MAX_CHARS_PER_SEGMENT = 800
+const MAX_CHARS_PER_SEGMENT = 400
 const MAX_OUTBOUND_SEGMENTS = 5
 const DEFAULT_TYPING_DELAY_MS = 3000
 
@@ -24,37 +24,32 @@ const sendTypingState = async ({ ctx, provider, delayMs }) => {
     const vendor = getVendorInstance(provider)
     const effectiveDelay = Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : DEFAULT_TYPING_DELAY_MS
 
-    let typingStarted = false
+    let usedPresenceUpdate = false
 
-    if (typeof ctx?.sendStateTyping === 'function') {
+    if (ctx && typeof ctx.sendStateTyping === 'function') {
         try {
             await ctx.sendStateTyping()
-            typingStarted = true
+            await waitFor(effectiveDelay)
+            return
         } catch (error) {
             console.error('ctx.sendStateTyping failed:', error)
         }
     }
 
-    if (!typingStarted && vendor && typeof vendor.sendStateTyping === 'function' && target) {
+    if (vendor && typeof vendor.sendStateTyping === 'function' && target) {
         try {
             await vendor.sendStateTyping(target)
-            typingStarted = true
+            await waitFor(effectiveDelay)
+            return
         } catch (error) {
             console.error('vendor.sendStateTyping failed:', error)
         }
     }
 
-    if (!typingStarted && typeof provider?.sendPresenceUpdate === 'function' && target) {
-        try {
-            await provider.sendPresenceUpdate('composing', target)
-            typingStarted = true
-        } catch (error) {
-            console.error('provider.sendPresenceUpdate failed:', error)
-        }
-    } else if (!typingStarted && vendor && typeof vendor.sendPresenceUpdate === 'function' && target) {
+    if (vendor && typeof vendor.sendPresenceUpdate === 'function' && target) {
         try {
             await vendor.sendPresenceUpdate('composing', target)
-            typingStarted = true
+            usedPresenceUpdate = true
         } catch (error) {
             console.error('vendor.sendPresenceUpdate failed:', error)
         }
@@ -62,19 +57,11 @@ const sendTypingState = async ({ ctx, provider, delayMs }) => {
 
     await waitFor(effectiveDelay)
 
-    if (typingStarted) {
-        if (typeof provider?.sendPresenceUpdate === 'function' && target) {
-            try {
-                await provider.sendPresenceUpdate('paused', target)
-            } catch (error) {
-                console.error('provider.sendPresenceUpdate pause failed:', error)
-            }
-        } else if (vendor && typeof vendor.sendPresenceUpdate === 'function' && target) {
-            try {
-                await vendor.sendPresenceUpdate('paused', target)
-            } catch (error) {
-                console.error('vendor.sendPresenceUpdate pause failed:', error)
-            }
+    if (usedPresenceUpdate) {
+        try {
+            await vendor.sendPresenceUpdate('paused', target)
+        } catch (error) {
+            console.error('vendor.sendPresenceUpdate pause failed:', error)
         }
     }
 }

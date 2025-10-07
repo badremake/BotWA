@@ -1,125 +1,55 @@
-const { sendChunkedMessages } = require('./message-utils')
-const { businessInfo } = require('./context')
-const { handleSchedulingFlow } = require('./scheduling')
-
-const MENU_KEYWORDS = ['menu', 'menú', 'opciones']
-
-const OPTION_MAPPINGS = [
+const menuSections = [
     {
-        keywords: ['1', 'uno', 'agendar', 'cita', 'agenda'],
-        handler: async (ctx, tools) => {
-            const clonedCtx = { ...ctx, body: 'agendar cita' }
-            return handleSchedulingFlow(clonedCtx, tools)
-        },
+        emoji: '1️⃣',
+        title: 'Agendar cita',
+        description:
+            'Ofrece iniciar el proceso de agenda para la llamada de orientación y explica que el sistema puede reservar la fecha automáticamente.',
     },
     {
-        keywords: ['2', 'dos', 'requisitos', 'documentos', 'pasos'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(flowDynamic, [
-                'Estos son los requisitos clave para iniciar la homologación: título o cédula en enfermería y pasaporte vigente.',
-                'También necesitaremos certificados de materias y práctica clínica. Si falta algo, te guiamos para reunirlo paso a paso.',
-            ], { ctx, provider })
-            return true
-        },
+        emoji: '2️⃣',
+        title: 'Requisitos y pasos',
+        description:
+            'Resume los documentos esenciales para homologar la carrera y aclara que, si algo falta, el asesor guiará a la persona.',
     },
     {
-        keywords: ['3', 'tres', 'beneficios', 'apoyo'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(flowDynamic, [
-                'Al homologar con nosotros recibes acompañamiento personalizado, simulacros de examen y asesoría para trámites migratorios.',
-                'Nuestro equipo te prepara para entrevistas laborales y te conecta con aliados en Estados Unidos para acelerar tu contratación.',
-            ], { ctx, provider })
-            return true
-        },
+        emoji: '3️⃣',
+        title: 'Beneficios del programa',
+        description:
+            'Destaca el acompañamiento personalizado, los simulacros de examen y el apoyo para trámites migratorios y colocación laboral.',
     },
     {
-        keywords: ['4', 'cuatro', 'costos', 'precio', 'pago', 'financiamiento'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(flowDynamic, [
-                'El programa cuenta con planes de pago flexibles y opciones de financiamiento. Ajustamos la inversión a tu situación.',
-                'En la llamada de orientación revisamos becas disponibles y promociones activas para que avances con tranquilidad.',
-            ], { ctx, provider })
-            return true
-        },
+        emoji: '4️⃣',
+        title: 'Costos y financiamiento',
+        description:
+            'Invita a conversar sobre inversiones, becas y opciones de pago flexibles durante la llamada de orientación.',
     },
     {
-        keywords: ['5', 'cinco', 'horarios', 'contacto', 'ubicación'],
-        handler: async (ctx, { flowDynamic, provider }) => {
-            await sendChunkedMessages(flowDynamic, [
-                `Atendemos de lunes a viernes de 9:00 a 15:00 (hora Ciudad de México).`,
-                `Toda la asesoría es en línea, así que te ayudamos sin importar dónde te encuentres. Escríbenos cuando necesites apoyo.`,
-            ], { ctx, provider })
-            return true
-        },
+        emoji: '5️⃣',
+        title: 'Horarios y contacto',
+        description:
+            'Comparte el horario de atención, la modalidad a distancia y cualquier canal adicional de comunicación disponible.',
     },
 ]
 
-const sendMenu = async ({ flowDynamic, provider, ctx }, { includeGreeting = false } = {}) => {
-    const messages = []
+const buildMenuExample = (organizationName = 'nuestro equipo') => {
+    const header = `Menú principal de ${organizationName}:`
+    const lines = menuSections.map((section) => `${section.emoji} ${section.title}`)
 
-    if (includeGreeting) {
-        messages.push(
-            `Hola, soy el asistente virtual de ${businessInfo.organizationName}. Estoy aquí para orientarte sobre la homologación.`,
-            'Comparte tu interés y te guiaré paso a paso hasta tu llamada con un asesor especializado.'
-        )
-    }
-
-    messages.push(
-        [
-            'Menú principal:',
-            '1️⃣ Agendar cita',
-            '',
-            '2️⃣ Requisitos y pasos',
-            '',
-            '3️⃣ Beneficios del programa',
-            '',
-            '4️⃣ Costos y apoyos',
-            '',
-            '5️⃣ Horarios y contacto',
-            '',
-            'Escribe el número o pídeme la opción con tus palabras.',
-        ].join('\n')
-    )
-
-    await sendChunkedMessages(flowDynamic, messages, { ctx, provider })
+    return [header, ...lines, '', 'Elige un número o descríbeme qué necesitas.'].join('\n')
 }
 
-const ensureInitialMenu = async (ctx, tools) => {
-    const { state } = tools
-    const myState = (typeof state.getMyState === 'function' ? state.getMyState() : state) || {}
-
-    if (myState.hasReceivedMenu) return false
-
-    await sendMenu({ ...tools, ctx }, { includeGreeting: true })
-    await state.update({
-        ...myState,
-        hasReceivedMenu: true,
-    })
-
-    return false
-}
-
-const handleMenuRequest = async (ctx, tools) => {
-    const message = ctx?.body?.trim()?.toLowerCase()
-    if (!message) return false
-
-    if (MENU_KEYWORDS.some((keyword) => message.includes(keyword))) {
-        await sendMenu({ ...tools, ctx })
-        return true
-    }
-
-    for (const option of OPTION_MAPPINGS) {
-        if (option.keywords.some((keyword) => message.includes(keyword))) {
-            const handled = await option.handler(ctx, tools)
-            if (handled) return true
-        }
-    }
-
-    return false
-}
+const buildMenuGuidance = (organizationName = 'nuestro equipo') =>
+    [
+        'Cuando sea oportuno (saludo inicial, petición de opciones o duda general), ofrece un menú en un solo mensaje corto.',
+        'Evita repetir el mismo menú si la persona ya lo recibió y enfócate en responder a su consulta actual.',
+        'Usa mensajes de máximo cuatro líneas y confirma si desea profundizar en algún punto antes de enviar más información.',
+        '',
+        'Ejemplo de menú sugerido:',
+        buildMenuExample(organizationName),
+    ].join('\n')
 
 module.exports = {
-    ensureInitialMenu,
-    handleMenuRequest,
-    sendMenu,
+    menuSections,
+    buildMenuExample,
+    buildMenuGuidance,
 }

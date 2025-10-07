@@ -29,7 +29,6 @@ const { getGeminiReply } = require('./services/gemini')
 const { contextMessages } = require('./services/context')
 const { handleSchedulingFlow } = require('./services/scheduling')
 const { sendChunkedMessages } = require('./services/message-utils')
-const { ensureInitialMenu, handleMenuRequest } = require('./services/menu')
 const { maybeReactToMessage } = require('./services/reactions')
 
 const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state, provider }) => {
@@ -46,12 +45,6 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             '🔄 He reiniciado nuestra conversación. ¿En qué puedo ayudarte ahora?',
             { ctx, provider }
         )
-        return
-    }
-
-    await ensureInitialMenu(ctx, { flowDynamic, state, provider })
-
-    if (await handleMenuRequest(ctx, { flowDynamic, state, provider })) {
         return
     }
 
