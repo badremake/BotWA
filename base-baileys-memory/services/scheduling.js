@@ -102,11 +102,15 @@ const resetSchedulingState = async (state) => {
     })
 }
 
-const startSchedulingFlow = async (ctx, { flowDynamic, state }) => {
+const startSchedulingFlow = async (ctx, tools) => {
+    const { flowDynamic, state, provider } = tools
+    const messagingOptions = { ctx, provider }
+
     if (!isCalendarConfigured()) {
         await sendChunkedMessages(
             flowDynamic,
-            'Por ahora no puedo agendar automáticamente porque falta configurar la conexión con Google Calendar. Contacta al equipo técnico para completar la configuración.'
+            'Por ahora no puedo agendar automáticamente porque falta configurar la conexión con Google Calendar. Contacta al equipo técnico para completar la configuración.',
+            messagingOptions
         )
         return true
     }
@@ -122,16 +126,18 @@ const startSchedulingFlow = async (ctx, { flowDynamic, state }) => {
 
     await sendChunkedMessages(
         flowDynamic,
-        '¡Perfecto! Empecemos con tu cita. ¿Cuál es tu nombre completo?'
+        '¡Perfecto! Empecemos con tu cita. ¿Cuál es tu nombre completo?',
+        messagingOptions
     )
 
     return true
 }
 
-const handleCancellation = async ({ flowDynamic, state }) => {
+const handleCancellation = async (ctx, { flowDynamic, state, provider }) => {
     await sendChunkedMessages(
         flowDynamic,
-        'He cancelado el proceso de agenda. Si deseas retomarlo, solo escribe "Agendar cita" cuando quieras.'
+        'He cancelado el proceso de agenda. Si deseas retomarlo, solo escribe "Agendar cita" cuando quieras.',
+        { ctx, provider }
     )
     await resetSchedulingState(state)
 }
@@ -372,7 +378,8 @@ const parseFlexibleTimeInput = (input) => {
 }
 
 const finalizeScheduling = async (ctx, tools, scheduling) => {
-    const { flowDynamic, state } = tools
+    const { flowDynamic, state, provider } = tools
+    const messagingOptions = { ctx, provider }
     const { name, email, date, time, notes, phone, timeZone } = scheduling.data
     const zone = timeZone || DEFAULT_TIMEZONE
 
@@ -382,7 +389,8 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
     if (!dateParts || !timeParts) {
         await sendChunkedMessages(
             flowDynamic,
-            'No pude interpretar la fecha y hora proporcionadas. Revisa el formato (AAAA-MM-DD para la fecha y HH:MM en formato de 24 horas) e intenta nuevamente.'
+            'No pude interpretar la fecha y hora proporcionadas. Revisa el formato (AAAA-MM-DD para la fecha y HH:MM en formato de 24 horas) e intenta nuevamente.',
+            messagingOptions
         )
         await state.update({
             scheduling: {
@@ -424,19 +432,21 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
 
         confirmationMessages.push(extraDetails.join(' '))
 
-        await sendChunkedMessages(flowDynamic, confirmationMessages)
+        await sendChunkedMessages(flowDynamic, confirmationMessages, messagingOptions)
     } catch (error) {
         console.error('Error al crear evento en Google Calendar:', error)
 
         if (error.message === 'GOOGLE_CALENDAR_MISSING_CONFIG') {
             await sendChunkedMessages(
                 flowDynamic,
-                'No logré conectar con Google Calendar porque la configuración está incompleta. Por favor, solicita al equipo técnico completar las variables de entorno necesarias y vuelve a intentarlo.'
+                'No logré conectar con Google Calendar porque la configuración está incompleta. Por favor, solicita al equipo técnico completar las variables de entorno necesarias y vuelve a intentarlo.',
+                messagingOptions
             )
         } else {
             await sendChunkedMessages(
                 flowDynamic,
-                'Ocurrió un inconveniente al crear la cita. Notificaré al equipo para que continúe el proceso contigo manualmente.'
+                'Ocurrió un inconveniente al crear la cita. Notificaré al equipo para que continúe el proceso contigo manualmente.',
+                messagingOptions
             )
         }
     }
@@ -447,11 +457,12 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
 }
 
 const continueSchedulingFlow = async (ctx, tools, scheduling) => {
-    const { flowDynamic, state } = tools
+    const { flowDynamic, state, provider } = tools
+    const messagingOptions = { ctx, provider }
     const message = ctx.body.trim()
 
     if (CANCEL_KEYWORDS.some((regex) => regex.test(message))) {
-        await handleCancellation(tools)
+        await handleCancellation(ctx, tools)
         return true
     }
 
@@ -469,7 +480,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
 
             await sendChunkedMessages(
                 flowDynamic,
-                'Gracias. ¿Cuál es tu correo electrónico para enviarte la confirmación?'
+                'Gracias. ¿Cuál es tu correo electrónico para enviarte la confirmación?',
+                messagingOptions
             )
 
             return true
@@ -481,7 +493,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             if (!emailRegex.test(email)) {
                 await sendChunkedMessages(
                     flowDynamic,
-                    'Parece que el correo no es válido. Intenta nuevamente con un formato como nombre@dominio.com.'
+                    'Parece que el correo no es válido. Intenta nuevamente con un formato como nombre@dominio.com.',
+                    messagingOptions
                 )
                 return true
             }
@@ -498,7 +511,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
 
             await sendChunkedMessages(
                 flowDynamic,
-                'Perfecto. ¿Para qué fecha necesitas la llamada? Puedes escribirla como “15 de mayo”, “15/05” o con tu formato preferido.'
+                'Perfecto. ¿Para qué fecha necesitas la llamada? Puedes escribirla como “15 de mayo”, “15/05” o con tu formato preferido.',
+                messagingOptions
             )
 
             return true
@@ -510,7 +524,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             if (!parsedDate) {
                 await sendChunkedMessages(
                     flowDynamic,
-                    'No logré interpretar esa fecha. Puedes decirme “15 de mayo”, “15/05/2024” o frases como “mañana”.'
+                    'No logré interpretar esa fecha. Puedes decirme “15 de mayo”, “15/05/2024” o frases como “mañana”.',
+                    messagingOptions
                 )
                 return true
             }
@@ -530,7 +545,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
 
             await sendChunkedMessages(
                 flowDynamic,
-                `Tomé nota para el ${formatDateForHumans(parsedDate)}. ¿A qué hora te viene mejor? Puedes decir “1 pm”, “13:30” o “mediodía”. Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo.`
+                `Tomé nota para el ${formatDateForHumans(parsedDate)}. ¿A qué hora te viene mejor? Puedes decir “1 pm”, “13:30” o “mediodía”. Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo.`,
+                messagingOptions
             )
 
             return true
@@ -542,7 +558,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             if (parsedTime.status === 'invalid') {
                 await sendChunkedMessages(
                     flowDynamic,
-                    'No logré interpretar la hora. Dime algo como “11:30”, “1 pm” o “13 horas”.'
+                    'No logré interpretar la hora. Dime algo como “11:30”, “1 pm” o “13 horas”.',
+                    messagingOptions
                 )
                 return true
             }
@@ -550,7 +567,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             if (parsedTime.status === 'clarify') {
                 await sendChunkedMessages(
                     flowDynamic,
-                    `¿Te refieres a las ${formatTimeForHumans(parsedTime.suggestion)}? Nuestro horario de atención es de 09:00 a 15:00. Elige un horario dentro de ese rango, por favor.`
+                    `¿Te refieres a las ${formatTimeForHumans(parsedTime.suggestion)}? Nuestro horario de atención es de 09:00 a 15:00. Elige un horario dentro de ese rango, por favor.`,
+                    messagingOptions
                 )
                 return true
             }
@@ -558,7 +576,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             if (parsedTime.status === 'out_of_range') {
                 await sendChunkedMessages(
                     flowDynamic,
-                    `El horario ${formatTimeForHumans(parsedTime)} queda fuera de nuestro servicio. Podemos atenderte entre 09:00 y 15:00. Indícame otra hora dentro de ese rango.`
+                    `El horario ${formatTimeForHumans(parsedTime)} queda fuera de nuestro servicio. Podemos atenderte entre 09:00 y 15:00. Indícame otra hora dentro de ese rango.`,
+                    messagingOptions
                 )
                 return true
             }
@@ -589,7 +608,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
 
             await sendChunkedMessages(
                 flowDynamic,
-                '¿Hay algo adicional que debamos tener en cuenta para la llamada? Puedes escribir "No" si no es necesario.'
+                '¿Hay algo adicional que debamos tener en cuenta para la llamada? Puedes escribir "No" si no es necesario.',
+                messagingOptions
             )
 
             return true
