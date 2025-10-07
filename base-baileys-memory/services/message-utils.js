@@ -1,4 +1,83 @@
-const MAX_CHARS_PER_SEGMENT = 260
+const MAX_CHARS_PER_SEGMENT = 800
+const MAX_OUTBOUND_SEGMENTS = 5
+const DEFAULT_TYPING_DELAY_MS = 3000
+
+const waitFor = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const getVendorInstance = (provider) => {
+    if (!provider) return null
+    try {
+        if (typeof provider.getInstance === 'function') {
+            const instance = provider.getInstance()
+            if (instance) return instance
+        }
+    } catch (error) {
+        console.error('Error obtaining provider instance:', error)
+    }
+    return provider.vendor ?? null
+}
+
+const determineChatId = (ctx) => ctx?.from ?? ctx?.key?.remoteJid ?? null
+
+const sendTypingState = async ({ ctx, provider, delayMs }) => {
+    const target = determineChatId(ctx)
+    const vendor = getVendorInstance(provider)
+    const effectiveDelay = Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : DEFAULT_TYPING_DELAY_MS
+
+    let typingStarted = false
+
+    if (typeof ctx?.sendStateTyping === 'function') {
+        try {
+            await ctx.sendStateTyping()
+            typingStarted = true
+        } catch (error) {
+            console.error('ctx.sendStateTyping failed:', error)
+        }
+    }
+
+    if (!typingStarted && vendor && typeof vendor.sendStateTyping === 'function' && target) {
+        try {
+            await vendor.sendStateTyping(target)
+            typingStarted = true
+        } catch (error) {
+            console.error('vendor.sendStateTyping failed:', error)
+        }
+    }
+
+    if (!typingStarted && typeof provider?.sendPresenceUpdate === 'function' && target) {
+        try {
+            await provider.sendPresenceUpdate('composing', target)
+            typingStarted = true
+        } catch (error) {
+            console.error('provider.sendPresenceUpdate failed:', error)
+        }
+    } else if (!typingStarted && vendor && typeof vendor.sendPresenceUpdate === 'function' && target) {
+        try {
+            await vendor.sendPresenceUpdate('composing', target)
+            typingStarted = true
+        } catch (error) {
+            console.error('vendor.sendPresenceUpdate failed:', error)
+        }
+    }
+
+    await waitFor(effectiveDelay)
+
+    if (typingStarted) {
+        if (typeof provider?.sendPresenceUpdate === 'function' && target) {
+            try {
+                await provider.sendPresenceUpdate('paused', target)
+            } catch (error) {
+                console.error('provider.sendPresenceUpdate pause failed:', error)
+            }
+        } else if (vendor && typeof vendor.sendPresenceUpdate === 'function' && target) {
+            try {
+                await vendor.sendPresenceUpdate('paused', target)
+            } catch (error) {
+                console.error('vendor.sendPresenceUpdate pause failed:', error)
+            }
+        }
+    }
+}
 
 const normalizeWhitespace = (text) => text.replace(/\s+/g, ' ').trim()
 
@@ -46,29 +125,76 @@ const splitIntoSegments = (text) => {
     return segments.length ? segments : [normalizeWhitespace(text)]
 }
 
-const prepareChunks = (textOrArray) => {
-    if (Array.isArray(textOrArray)) {
-        return textOrArray
-            .map((text) => splitIntoSegments(text))
-            .flat()
-            .map((text) => normalizeWhitespace(text))
-            .filter(Boolean)
+const condenseSegments = (segments) => {
+    if (!Array.isArray(segments)) return []
+    if (segments.length <= MAX_OUTBOUND_SEGMENTS) return segments
+
+    const condensed = []
+    let buffer = ''
+
+    for (const segment of segments) {
+        const candidate = buffer ? `${buffer} ${segment}`.trim() : segment
+
+        if (candidate.length <= MAX_CHARS_PER_SEGMENT || !buffer) {
+            buffer = candidate
+            continue
+        }
+
+        if (buffer) condensed.push(buffer)
+        buffer = segment
     }
 
-    return splitIntoSegments(String(textOrArray))
-        .map((text) => normalizeWhitespace(text))
-        .filter(Boolean)
+    if (buffer) condensed.push(buffer)
+
+    if (condensed.length <= MAX_OUTBOUND_SEGMENTS) {
+        return condensed
+    }
+
+    const finalSegments = []
+    const chunkSize = Math.ceil(condensed.length / MAX_OUTBOUND_SEGMENTS)
+
+    for (let i = 0; i < condensed.length; i += chunkSize) {
+        finalSegments.push(condensed.slice(i, i + chunkSize).join(' '))
+    }
+
+    return finalSegments
 }
 
-const sendChunkedMessages = async (flowDynamic, textOrArray) => {
+const prepareChunks = (textOrArray) => {
+    const segments = Array.isArray(textOrArray)
+        ? textOrArray
+              .map((text) => splitIntoSegments(text))
+              .flat()
+        : splitIntoSegments(String(textOrArray))
+
+    return condenseSegments(
+        segments
+            .map((text) => normalizeWhitespace(text))
+            .filter(Boolean)
+    )
+}
+
+const sendChunkedMessages = async (flowDynamic, textOrArray, options = {}) => {
+    const { ctx = null, provider = null, delayMs = DEFAULT_TYPING_DELAY_MS } = options
     const chunks = prepareChunks(textOrArray)
     if (!chunks.length) return
 
-    const payload = chunks.map((body) => ({ body }))
-    await flowDynamic(payload)
+    for (const [index, body] of chunks.entries()) {
+        await sendTypingState({ ctx, provider, delayMs })
+
+        const payload = [{ body, delay: 0 }]
+        const isLast = index === chunks.length - 1
+
+        if (isLast) {
+            await flowDynamic(payload)
+        } else {
+            await flowDynamic(payload, { continue: false })
+        }
+    }
 }
 
 module.exports = {
     sendChunkedMessages,
     prepareChunks,
+    DEFAULT_TYPING_DELAY_MS,
 }
