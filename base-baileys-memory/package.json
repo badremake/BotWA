@@ -16,8 +16,8 @@
         "@bot-whatsapp/provider": "latest",
         "@bot-whatsapp/portal": "latest",
         "@whiskeysockets/baileys": "6.5.0",
-        "wa-sticker-formatter": "4.4.4",
-        "cache-manager": "5.2.4"
+        "cache-manager": "5.2.4",
+        "wa-sticker-formatter": "4.4.4"
     },
     "devDependencies": {
         "eslint-plugin-bot-whatsapp": "latest",

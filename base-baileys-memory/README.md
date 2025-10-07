@@ -10,8 +10,15 @@
 
 ```
 npm install
+cp .env.example .env # edita el archivo y coloca tu GEMINI_API_KEY
 npm start
 ```
+
+### Configurar Gemini
+
+1. Copia el archivo `.env.example` a `.env` y agrega tu clave real de Gemini en `GEMINI_API_KEY`.
+2. Si quieres utilizar otro modelo soportado (por ejemplo `gemini-1.5-pro`), define la variable `GEMINI_MODEL` en el mismo archivo.
+3. Guarda los cambios y reinicia el bot.
 
 ---
 ## Recursos
