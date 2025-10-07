@@ -57,16 +57,23 @@ const getGeminiReply = async (message, history = []) => {
     const sanitizedHistory = sanitizeHistory(history)
     const contents = [...sanitizedHistory, buildHistoryEntry('user', message)]
 
-    const response = await fetch(
-        `${BASE_URL}/models/${DEFAULT_MODEL}:generateContent?key=${API_KEY}`,
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ contents }),
-        }
-    )
+    let response
+    try {
+        response = await fetch(
+            `${BASE_URL}/models/${DEFAULT_MODEL}:generateContent?key=${API_KEY}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ contents }),
+            }
+        )
+    } catch (cause) {
+        const error = new Error('GEMINI_FETCH_FAILED')
+        error.cause = cause
+        throw error
+    }
 
     if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}))
