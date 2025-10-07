@@ -1,4 +1,9 @@
 const MAX_CHARS_PER_SEGMENT = 260
+const DEFAULT_MESSAGE_DELAY_MS = 3000
+const DEFAULT_REACTION_PROBABILITY = 0.35
+const REACTIONS = ['👍', '❤️']
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const normalizeWhitespace = (text) => text.replace(/\s+/g, ' ').trim()
 
@@ -60,15 +65,67 @@ const prepareChunks = (textOrArray) => {
         .filter(Boolean)
 }
 
-const sendChunkedMessages = async (flowDynamic, textOrArray) => {
+const sendStateTyping = async (provider, chatId, state) => {
+    if (!provider || !chatId || typeof provider.sendPresenceUpdate !== 'function') return
+
+    try {
+        await provider.sendPresenceUpdate(chatId, state)
+    } catch (error) {
+        // Silently ignore typing presence errors
+    }
+}
+
+const withTypingDelay = async (provider, chatId, delayMs) => {
+    if (!delayMs || delayMs < 0) {
+        return
+    }
+
+    await sendStateTyping(provider, chatId, 'composing')
+    await delay(delayMs)
+    await sendStateTyping(provider, chatId, 'paused')
+}
+
+const sendChunkedMessages = async (flowDynamic, textOrArray, options = {}) => {
+    const { ctx, provider, delayMs = DEFAULT_MESSAGE_DELAY_MS, chatId: overrideChatId } = options
+
     const chunks = prepareChunks(textOrArray)
     if (!chunks.length) return
 
-    const payload = chunks.map((body) => ({ body }))
-    await flowDynamic(payload)
+    const chatId = overrideChatId || ctx?.key?.remoteJid || ctx?.from || null
+
+    for (const chunk of chunks) {
+        await withTypingDelay(provider, chatId, delayMs)
+        await flowDynamic([{ body: chunk }])
+    }
+
+    await sendStateTyping(provider, chatId, 'available')
+}
+
+const maybeReactToMessage = async (ctx, provider, options = {}) => {
+    const probability =
+        typeof options.probability === 'number' ? options.probability : DEFAULT_REACTION_PROBABILITY
+    const reactions = Array.isArray(options.reactions) && options.reactions.length
+        ? options.reactions
+        : REACTIONS
+
+    if (!ctx || ctx.fromMe || !provider?.vendor?.sendMessage) return
+    if (!ctx.key || Math.random() > probability) return
+
+    const chatId = ctx.key.remoteJid || ctx.from
+    if (!chatId) return
+
+    const reaction = reactions[Math.floor(Math.random() * reactions.length)]
+
+    try {
+        await provider.vendor.sendMessage(chatId, { react: { text: reaction, key: ctx.key } })
+    } catch (error) {
+        // Ignore reaction failures silently
+    }
 }
 
 module.exports = {
     sendChunkedMessages,
     prepareChunks,
+    maybeReactToMessage,
+    sendStateTyping,
 }
