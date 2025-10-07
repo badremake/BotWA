@@ -6,8 +6,6 @@ if (!globalThis.fetch) {
     throw new Error('Fetch API no disponible en este entorno. Actualiza a Node 18 o superior.')
 }
 
-const MAX_HISTORY_ENTRIES = 40
-
 const sanitizeHistory = (history = []) => {
     if (!Array.isArray(history)) return []
 
@@ -20,7 +18,7 @@ const sanitizeHistory = (history = []) => {
                 Array.isArray(entry.parts) &&
                 entry.parts.every((part) => part && typeof part.text === 'string')
         )
-        .slice(-MAX_HISTORY_ENTRIES)
+        .slice(-20)
 }
 
 const buildHistoryEntry = (role, text) => ({
@@ -98,7 +96,7 @@ const getGeminiReply = async (message, history = [], context = []) => {
         ...sanitizedHistory,
         buildHistoryEntry('user', message),
         buildHistoryEntry('model', reply),
-    ].slice(-MAX_HISTORY_ENTRIES)
+    ].slice(-20)
 
     return { reply, history: updatedHistory }
 }
