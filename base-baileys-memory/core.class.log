@@ -2,10 +2,10 @@
   key: {
     remoteJid: '5219612953369@s.whatsapp.net',
     fromMe: false,
-    id: '3AFF0E30A0938E3D181E',
+    id: '3A787385A5AD78BDFC8F',
     participant: undefined
   },
-  messageTimestamp: 1759853822,
+  messageTimestamp: 1759939293,
   pushName: 'Andrés',
   broadcast: false,
   message: Message {
@@ -20,8 +20,8 @@
   from: '5219612953369'
 }
 [QUEUE_SE_ENVIO]:  {
-  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
-  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  ref: 'ans_2417d1f5-657c-4928-a022-3bf4e26408ee',
+  keyword: 'key_53aebee1-9da3-44e3-916c-aa4a30ce167d',
   answer: '__call_action__',
   options: {
     media: null,
@@ -35,64 +35,20 @@
     keyword: {},
     callback: true
   },
-  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
+  refSerialize: '6b82cce6ab4fab483387831ed7bcee0d'
 }
 [handleMsg]:  {
   key: {
     remoteJid: '5219612953369@s.whatsapp.net',
     fromMe: false,
-    id: '3A84AE8DBFE5069C12A3',
+    id: '3ADA36A02478869AB5D6',
     participant: undefined
   },
-  messageTimestamp: 1759853835,
+  messageTimestamp: 1759939397,
   pushName: 'Andrés',
   broadcast: false,
   message: Message {
-    conversation: 'De qué es este número de WhatsApp',
-    messageContextInfo: MessageContextInfo {
-      deviceListMetadata: [DeviceListMetadata],
-      deviceListMetadataVersion: 2,
-      messageSecret: [Uint8Array]
-    }
-  },
-  body: 'De qué es este número de WhatsApp',
-  from: '5219612953369'
-}
-[QUEUE_SE_ENVIO]:  {
-  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
-  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
-  answer: '__call_action__',
-  options: {
-    media: null,
-    buttons: [],
-    capture: false,
-    child: null,
-    delay: 0,
-    idle: null,
-    ref: null,
-    nested: [],
-    keyword: {},
-    callback: true
-  },
-  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
-}
-[handleMsg]:  {
-  key: {
-    remoteJid: '5219611527386@s.whatsapp.net',
-    fromMe: false,
-    id: 'AC46AF46503DB23AEA099BCC136BB200',
-    participant: undefined
-  },
-  messageTimestamp: 1759856738,
-  pushName: 'Vania Sánchez 🕉️💗',
-  broadcast: false,
-  message: Message {
-    extendedTextMessage: ExtendedTextMessage {
-      text: 'Hola',
-      previewType: 0,
-      contextInfo: [ContextInfo],
-      inviteLinkGroupTypeV2: 0
-    },
+    conversation: 'Hola',
     messageContextInfo: MessageContextInfo {
       deviceListMetadata: [DeviceListMetadata],
       deviceListMetadataVersion: 2,
@@ -100,11 +56,11 @@
     }
   },
   body: 'Hola',
-  from: '5219611527386'
+  from: '5219612953369'
 }
 [QUEUE_SE_ENVIO]:  {
-  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
-  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
+  ref: 'ans_2417d1f5-657c-4928-a022-3bf4e26408ee',
+  keyword: 'key_53aebee1-9da3-44e3-916c-aa4a30ce167d',
   answer: '__call_action__',
   options: {
     media: null,
@@ -118,122 +74,5 @@
     keyword: {},
     callback: true
   },
-  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
-}
-[handleMsg]:  {
-  key: {
-    remoteJid: '5219611527386@s.whatsapp.net',
-    fromMe: false,
-    id: 'AC849676A6F81595F998127AB71CD78C',
-    participant: undefined
-  },
-  messageTimestamp: 1759856778,
-  pushName: 'Vania Sánchez 🕉️💗',
-  broadcast: false,
-  message: Message {
-    conversation: 'Que color da verde y amarillo',
-    messageContextInfo: MessageContextInfo {
-      deviceListMetadata: [DeviceListMetadata],
-      deviceListMetadataVersion: 2,
-      messageSecret: [Uint8Array]
-    }
-  },
-  body: 'Que color da verde y amarillo',
-  from: '5219611527386'
-}
-[QUEUE_SE_ENVIO]:  {
-  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
-  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
-  answer: '__call_action__',
-  options: {
-    media: null,
-    buttons: [],
-    capture: false,
-    child: null,
-    delay: 0,
-    idle: null,
-    ref: null,
-    nested: [],
-    keyword: {},
-    callback: true
-  },
-  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
-}
-[handleMsg]:  {
-  key: {
-    remoteJid: '5219611527386@s.whatsapp.net',
-    fromMe: false,
-    id: 'AC112DE5DB390498CF96C548D042CFFC',
-    participant: undefined
-  },
-  messageTimestamp: 1759856836,
-  pushName: 'Vania Sánchez 🕉️💗',
-  broadcast: false,
-  message: Message {
-    conversation: 'Qué es la homologación de la carrera de enfermería hacia EU',
-    messageContextInfo: MessageContextInfo {
-      deviceListMetadata: [DeviceListMetadata],
-      deviceListMetadataVersion: 2,
-      messageSecret: [Uint8Array]
-    }
-  },
-  body: 'Qué es la homologación de la carrera de enfermería hacia EU',
-  from: '5219611527386'
-}
-[QUEUE_SE_ENVIO]:  {
-  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
-  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
-  answer: '__call_action__',
-  options: {
-    media: null,
-    buttons: [],
-    capture: false,
-    child: null,
-    delay: 0,
-    idle: null,
-    ref: null,
-    nested: [],
-    keyword: {},
-    callback: true
-  },
-  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
-}
-[handleMsg]:  {
-  key: {
-    remoteJid: '5219611527386@s.whatsapp.net',
-    fromMe: false,
-    id: 'AC0015CEDCA3FABEEC2B081CB5285466',
-    participant: undefined
-  },
-  messageTimestamp: 1759856876,
-  pushName: 'Vania Sánchez 🕉️💗',
-  broadcast: false,
-  message: Message {
-    conversation: 'Y hacia Estados Unidos',
-    messageContextInfo: MessageContextInfo {
-      deviceListMetadata: [DeviceListMetadata],
-      deviceListMetadataVersion: 2,
-      messageSecret: [Uint8Array]
-    }
-  },
-  body: 'Y hacia Estados Unidos',
-  from: '5219611527386'
-}
-[QUEUE_SE_ENVIO]:  {
-  ref: 'ans_f26e45ec-e523-4827-9587-31aed49322da',
-  keyword: 'key_54d02e0d-6ed0-4df6-b4d3-8607e6975590',
-  answer: '__call_action__',
-  options: {
-    media: null,
-    buttons: [],
-    capture: false,
-    child: null,
-    delay: 0,
-    idle: null,
-    ref: null,
-    nested: [],
-    keyword: {},
-    callback: true
-  },
-  refSerialize: '507f59e05a9bc06a9fa0f60232b8883c'
+  refSerialize: '6b82cce6ab4fab483387831ed7bcee0d'
 }
