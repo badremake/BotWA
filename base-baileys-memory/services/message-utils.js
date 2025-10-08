@@ -147,23 +147,38 @@ const condenseSegments = (segments) => {
     return finalSegments
 }
 
-const prepareChunks = (textOrArray) => {
+const prepareChunks = (textOrArray, { preserveFormatting = false } = {}) => {
+    const processText = (text) => {
+        if (preserveFormatting && typeof text === 'string' && /\n/.test(text)) {
+            return [text]
+        }
+        return splitIntoSegments(String(text))
+    }
+
     const segments = Array.isArray(textOrArray)
-        ? textOrArray
-              .map((text) => splitIntoSegments(text))
-              .flat()
-        : splitIntoSegments(String(textOrArray))
+        ? textOrArray.map((text) => processText(text)).flat()
+        : processText(String(textOrArray))
 
     return condenseSegments(
         segments
-            .map((text) => normalizeWhitespace(text))
+            .map((text) => {
+                if (preserveFormatting && typeof text === 'string') {
+                    return text.replace(/\s+$/u, '')
+                }
+                return normalizeWhitespace(text)
+            })
             .filter(Boolean)
     )
 }
 
 const sendChunkedMessages = async (flowDynamic, textOrArray, options = {}) => {
-    const { ctx = null, provider = null, delayMs = DEFAULT_TYPING_DELAY_MS } = options
-    const chunks = prepareChunks(textOrArray)
+    const {
+        ctx = null,
+        provider = null,
+        delayMs = DEFAULT_TYPING_DELAY_MS,
+        preserveFormatting = false,
+    } = options
+    const chunks = prepareChunks(textOrArray, { preserveFormatting })
     if (!chunks.length) return
 
     for (const [index, body] of chunks.entries()) {
