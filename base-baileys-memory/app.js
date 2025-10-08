@@ -27,7 +27,6 @@ const MockAdapter = require('@bot-whatsapp/database/mock')
 
 const { getGeminiReply } = require('./services/gemini')
 const { contextMessages } = require('./services/context')
-const { buildMenuMessages, isMenuRequest } = require('./services/menu')
 const { handleSchedulingFlow } = require('./services/scheduling')
 const { sendChunkedMessages } = require('./services/message-utils')
 
@@ -43,15 +42,6 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             '🔄 He reiniciado nuestra conversación. ¿En qué puedo ayudarte ahora?',
             { ctx, provider }
         )
-        return
-    }
-
-    if (isMenuRequest(message)) {
-        await sendChunkedMessages(flowDynamic, buildMenuMessages(), {
-            ctx,
-            provider,
-            preserveFormatting: true,
-        })
         return
     }
 
