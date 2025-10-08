@@ -37,6 +37,40 @@ const {
 const { handleSchedulingFlow } = require('./services/scheduling')
 const { sendChunkedMessages } = require('./services/message-utils')
 
+const GREETING_KEYWORDS = [
+    'hola',
+    'holaa',
+    'holaaa',
+    'buen dia',
+    'buenos dias',
+    'buenas tardes',
+    'buenas noches',
+    'saludos',
+    'que tal',
+    'qué tal',
+    'hi',
+    'hello',
+]
+
+const escapeRegExp = (text) => String(text).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+
+const normalizeText = (text = '') =>
+    String(text)
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLowerCase()
+
+const GREETING_PATTERNS = GREETING_KEYWORDS.map((keyword) =>
+    new RegExp(`\\b${escapeRegExp(normalizeText(keyword))}\\b`, 'u')
+)
+
+const isGreetingMessage = (message = '') => {
+    const normalized = normalizeText(message)
+    if (!normalized) return false
+
+    return GREETING_PATTERNS.some((pattern) => pattern.test(normalized))
+}
+
 const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state, provider }) => {
     const message = ctx?.body?.trim()
     if (!message) return
@@ -63,6 +97,40 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             { ctx, provider }
         )
         return
+    }
+
+    const userStateGreetingCount = Number(userState.greetingCount) || 0
+
+    if (isGreetingMessage(message)) {
+        const nextCount = userStateGreetingCount + 1
+        await state.update({ greetingCount: nextCount })
+
+        if (nextCount === 1) {
+            await sendChunkedMessages(
+                flowDynamic,
+                ['¡Hola! 👋 Soy tu asistente virtual.', ...buildMenuMessages()],
+                {
+                    ctx,
+                    provider,
+                    preserveFormatting: true,
+                }
+            )
+        } else if (nextCount === 2) {
+            return
+        } else {
+            await sendChunkedMessages(flowDynamic, buildMenuMessages(), {
+                ctx,
+                provider,
+                preserveFormatting: true,
+            })
+            await state.update({ greetingCount: 1 })
+        }
+
+        return
+    }
+
+    if (userStateGreetingCount !== 0) {
+        await state.update({ greetingCount: 0 })
     }
 
     if (isMenuRequest(message)) {

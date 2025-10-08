@@ -51,6 +51,49 @@ const fetchAccessToken = async () => {
     return json.access_token
 }
 
+const listCalendarEvents = async ({ timeMin, timeMax } = {}) => {
+    const accessToken = await fetchAccessToken()
+    const calendarId = process.env.GOOGLE_CALENDAR_ID
+
+    const params = new URLSearchParams({
+        singleEvents: 'true',
+        orderBy: 'startTime',
+    })
+
+    if (timeMin) {
+        const value = timeMin instanceof Date ? timeMin.toISOString() : timeMin
+        params.append('timeMin', value)
+    }
+
+    if (timeMax) {
+        const value = timeMax instanceof Date ? timeMax.toISOString() : timeMax
+        params.append('timeMax', value)
+    }
+
+    const response = await fetch(
+        `${CALENDAR_BASE_URL}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+        {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        }
+    )
+
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        const errorMessage =
+            errorBody?.error?.message || `Error HTTP ${response.status}: ${response.statusText}`
+        const error = new Error(errorMessage)
+        error.code = response.status
+        error.details = errorBody
+        throw error
+    }
+
+    const json = await response.json()
+    return Array.isArray(json?.items) ? json.items : []
+}
+
 const createCalendarEvent = async ({
     summary,
     description,
@@ -102,4 +145,5 @@ const createCalendarEvent = async ({
 module.exports = {
     createCalendarEvent,
     isCalendarConfigured,
+    listCalendarEvents,
 }
