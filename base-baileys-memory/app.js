@@ -28,12 +28,31 @@ const MockAdapter = require('@bot-whatsapp/database/mock')
 const { getGeminiReply } = require('./services/gemini')
 const { contextMessages } = require('./services/context')
 const { buildMenuMessages, isMenuRequest } = require('./services/menu')
+const {
+    buildAgentEscalationMessage,
+    isAgentEscalationRequest,
+    isAgentHandoffEndCommand,
+    isAgentHandoffStartCommand,
+} = require('./services/agent-handoff')
 const { handleSchedulingFlow } = require('./services/scheduling')
 const { sendChunkedMessages } = require('./services/message-utils')
 
 const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state, provider }) => {
     const message = ctx?.body?.trim()
     if (!message) return
+
+    const isFromAgent = Boolean(ctx?.key?.fromMe)
+    const userState = state.getMyState() || {}
+    const agentChatActive = Boolean(userState.agentChatActive)
+
+    if (isFromAgent) {
+        if (isAgentHandoffStartCommand(message)) {
+            await state.update({ agentChatActive: true })
+        } else if (isAgentHandoffEndCommand(message)) {
+            await state.update({ agentChatActive: false })
+        }
+        return
+    }
 
     const normalizedMessage = message.toLowerCase()
     if (['reset', 'reiniciar', 'limpiar'].includes(normalizedMessage)) {
@@ -47,11 +66,29 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     }
 
     if (isMenuRequest(message)) {
+        if (agentChatActive) {
+            await state.update({ agentChatActive: false })
+        }
         await sendChunkedMessages(flowDynamic, buildMenuMessages(), {
             ctx,
             provider,
             preserveFormatting: true,
         })
+        return
+    }
+
+    if (isAgentEscalationRequest(message)) {
+        if (!agentChatActive) {
+            await state.update({ agentChatActive: true })
+        }
+        await sendChunkedMessages(flowDynamic, buildAgentEscalationMessage(), {
+            ctx,
+            provider,
+        })
+        return
+    }
+
+    if (agentChatActive) {
         return
     }
 

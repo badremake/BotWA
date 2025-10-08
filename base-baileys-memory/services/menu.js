@@ -41,14 +41,11 @@ const stripDiacritics = (text) =>
 
 const escapeRegExp = (text) => String(text).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
 
-const buildMenuBody = () =>
-    [
-        'Escribe la opción que necesites:',
-        '',
-        ...menuSections.map((section) => `${section.emoji} ${section.title}`),
-    ].join('\n')
+const buildMenuBody = () => `Escribe la opción que necesites:
 
-const buildMenuMessages = () => ['Aquí está nuestro menú:', buildMenuBody()]
+${menuSections.map((section) => `${section.emoji} ${section.title}`).join('\n')}`
+
+const buildMenuMessages = () => ['Este es nuestro menú:', buildMenuBody()]
 
 const buildMenuExample = () => buildMenuMessages().join('\n\n')
 
