@@ -56,6 +56,8 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             await state.update({ agentChatActive: true })
         } else if (isAgentHandoffEndCommand(message)) {
             await state.update({ agentChatActive: false })
+        } else if (message.trim().toLowerCase() === 'sesionenvivo') {
+            await state.update({ agentChatActive: !agentChatActive })
         }
         return
     }
