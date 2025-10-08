@@ -1,11 +1,12 @@
 const { businessInfo } = require('./context')
-const { createCalendarEvent, isCalendarConfigured } = require('./calendar')
+const { createCalendarEvent, isCalendarConfigured, listCalendarEvents } = require('./calendar')
 const { sendChunkedMessages } = require('./message-utils')
 
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Mexico_City'
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = Number(
     process.env.DEFAULT_APPOINTMENT_DURATION_MINUTES || 45
 )
+const MINIMUM_ADVANCE_MINUTES = Number(process.env.MINIMUM_ADVANCE_MINUTES || 120)
 
 const MONTH_NAMES = [
     'enero',
@@ -85,6 +86,93 @@ const formatDateForHumans = (dateParts) =>
     `${dateParts.day} de ${MONTH_NAMES[dateParts.month - 1]} de ${dateParts.year}`
 
 const formatTimeForHumans = (timeParts) => `${padNumber(timeParts.hour)}:${padNumber(timeParts.minute)}`
+
+const isWeekend = (dateParts) => {
+    const candidate = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day))
+    const day = candidate.getUTCDay()
+    return day === 0 || day === 6
+}
+
+const parseFormatterParts = (parts) =>
+    parts.reduce((acc, part) => {
+        if (part.type && part.value) {
+            acc[part.type] = part.value
+        }
+        return acc
+    }, {})
+
+const buildZonedDate = (dateParts, timeParts, timeZone) => {
+    try {
+        const desiredUtc = Date.UTC(
+            dateParts.year,
+            dateParts.month - 1,
+            dateParts.day,
+            timeParts.hour,
+            timeParts.minute,
+            0
+        )
+
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone,
+            hour12: false,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        })
+
+        let guess = new Date(desiredUtc)
+        for (let index = 0; index < 5; index += 1) {
+            const parts = parseFormatterParts(formatter.formatToParts(guess))
+            const partsUtc = Date.UTC(
+                Number(parts.year),
+                Number(parts.month) - 1,
+                Number(parts.day),
+                Number(parts.hour),
+                Number(parts.minute),
+                Number(parts.second || '0')
+            )
+
+            const diff = desiredUtc - partsUtc
+            if (diff === 0) {
+                return guess
+            }
+
+            guess = new Date(guess.getTime() + diff)
+        }
+
+        return guess
+    } catch (error) {
+        console.error('Error construyendo la fecha con zona horaria:', error)
+        return null
+    }
+}
+
+const parseEventDate = (dateInfo) => {
+    if (!dateInfo) return null
+    if (dateInfo.dateTime) {
+        const parsed = new Date(dateInfo.dateTime)
+        return Number.isNaN(parsed.getTime()) ? null : parsed
+    }
+
+    if (dateInfo.date) {
+        const parsed = new Date(`${dateInfo.date}T00:00:00Z`)
+        return Number.isNaN(parsed.getTime()) ? null : parsed
+    }
+
+    return null
+}
+
+const hasCalendarConflict = (events, requestedStart, requestedEnd) =>
+    events.some((event) => {
+        const eventStart = parseEventDate(event.start)
+        const eventEnd = parseEventDate(event.end)
+        if (!eventStart || !eventEnd) return false
+
+        return eventStart < requestedEnd && eventEnd > requestedStart
+    })
 
 const START_KEYWORDS = [
     /agendar\s+(una\s+)?(cita|llamada)/i,
@@ -397,8 +485,111 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
         return true
     }
 
+    if (isWeekend(dateParts)) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Los sábados y domingos no contamos con atención en tiempo real ni llamadas. Indícame una fecha de lunes a viernes.',
+            { ctx, provider }
+        )
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectDate',
+            },
+        })
+        return true
+    }
+
     const startIso = buildIsoDateTime(dateParts, timeParts)
     const endInfo = addMinutesToDateTime(dateParts, timeParts, DEFAULT_APPOINTMENT_DURATION_MINUTES)
+    const startDate = buildZonedDate(dateParts, timeParts, zone)
+    const endDate = buildZonedDate(endInfo.dateParts, endInfo.timeParts, zone)
+
+    if (!startDate || !endDate) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No pude interpretar la fecha y hora con la zona horaria indicada. Confírmame nuevamente la fecha y el horario, por favor.',
+            { ctx, provider }
+        )
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectDate',
+            },
+        })
+        return true
+    }
+
+    const now = new Date()
+    if (startDate.getTime() <= now.getTime()) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Esa fecha y hora ya pasaron. Indícame una opción futura con al menos dos horas de anticipación.',
+            { ctx, provider }
+        )
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectDate',
+            },
+        })
+        return true
+    }
+
+    const minimumAdvanceMillis = MINIMUM_ADVANCE_MINUTES * 60 * 1000
+    if (startDate.getTime() - now.getTime() < minimumAdvanceMillis) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Necesitamos al menos dos horas de anticipación para agendar la llamada. ¿Puedes indicarme otra fecha y hora?',
+            { ctx, provider }
+        )
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectDate',
+            },
+        })
+        return true
+    }
+
+    let existingEvents = []
+    try {
+        const timeMin = new Date(startDate.getTime() - DEFAULT_APPOINTMENT_DURATION_MINUTES * 60 * 1000)
+        const timeMax = endDate
+        existingEvents = await listCalendarEvents({
+            timeMin: timeMin.toISOString(),
+            timeMax: timeMax.toISOString(),
+        })
+    } catch (error) {
+        console.error('Error al consultar eventos existentes en Google Calendar:', error)
+        await sendChunkedMessages(
+            flowDynamic,
+            'No pude confirmar la disponibilidad del calendario en este momento. ¿Podrías indicarme otro horario para intentarlo de nuevo?',
+            { ctx, provider }
+        )
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectTime',
+            },
+        })
+        return true
+    }
+
+    if (hasCalendarConflict(existingEvents, startDate, endDate)) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Ya tenemos una cita reservada en ese horario. Indícame otra hora disponible para ti dentro de nuestro horario de atención.',
+            { ctx, provider }
+        )
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectTime',
+            },
+        })
+        return true
+    }
 
     try {
         const event = await createCalendarEvent({
@@ -520,6 +711,15 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 await sendChunkedMessages(
                     flowDynamic,
                     'No logré interpretar esa fecha. Puedes decirme “15 de mayo”, “15/05/2024” o frases como “mañana”.',
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            if (isWeekend(parsedDate)) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Los sábados y domingos no contamos con atención en tiempo real ni llamadas. Elige una fecha de lunes a viernes, por favor.',
                     { ctx, provider }
                 )
                 return true
