@@ -15,6 +15,8 @@ const MINIMUM_NOTICE_MINUTES = 60
 const SUGGESTION_SLOT_MINUTES = 30
 const MAX_SUGGESTION_SLOTS = 5
 const MAX_SUGGESTION_DAYS = 14
+const TIME_INDICATOR_REGEX =
+    /(\d{1,2}\s*(?:am|a\.m|pm|p\.m|horas?|hrs?))|(\d{1,2}[:h\.](\d{2}))|(a\s+las\s+\d{1,2})|(mediod[ií]a)|(medianoche)/i
 
 const MONTH_NAMES = [
     'enero',
@@ -98,6 +100,25 @@ const formatTimeForHumans = (timeParts) => `${padNumber(timeParts.hour)}:${padNu
 const noticeInMilliseconds = MINIMUM_NOTICE_MINUTES * 60 * 1000
 
 const minutesToMilliseconds = (minutes) => minutes * 60 * 1000
+
+const normalizeTimeZoneInput = (rawZone) => {
+    if (!rawZone) return null
+
+    if (/^GMT[+-]\d{1,2}$/i.test(rawZone)) {
+        return rawZone.replace(/^GMT/i, 'UTC')
+    }
+
+    if (/^UTC[+-]\d{1,2}$/i.test(rawZone)) {
+        return rawZone.toUpperCase()
+    }
+
+    return rawZone
+}
+
+const hasExplicitTimeReference = (message = '') => {
+    if (!message || typeof message !== 'string') return false
+    return TIME_INDICATOR_REGEX.test(message)
+}
 
 const getDatePartsInTimeZone = (date, timeZone) => {
     const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -340,6 +361,19 @@ const buildAvailabilityMessage = (slots, { intro, closing } = {}) => {
     return [heading, ...lines, closingLine].join('\n')
 }
 
+const buildDateSpecificAvailabilityMessage = (slots, dateParts, timeZone) => {
+    const header = `Para el ${formatDateForHumans(dateParts)} tengo estos espacios disponibles (hora local de ${timeZone}):`
+    const lines = slots.map((slot) =>
+        `• ${formatTimeForHumans(slot.timeParts)} a ${formatTimeForHumans(slot.endTimeParts)}`
+    )
+
+    return [
+        header,
+        ...lines,
+        'Si alguno te funciona, dime "Agendar cita" con el horario elegido y continúo con tu registro.',
+    ].join('\n')
+}
+
 const sendAvailabilitySuggestions = async (
     ctx,
     { flowDynamic, state, provider },
@@ -453,6 +487,68 @@ const presentAvailabilitySlots = async (
     return true
 }
 
+const sendDateSpecificAvailability = async (ctx, tools, { dateParts, timeZone }) => {
+    const { flowDynamic, state, provider } = tools
+
+    const dayStart = buildZonedDate(dateParts, { hour: BUSINESS_START_HOUR, minute: 0 }, timeZone)
+    const dayEnd = buildZonedDate(dateParts, { hour: BUSINESS_END_HOUR, minute: 0 }, timeZone)
+
+    if (!dayStart || !dayEnd) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré interpretar esa fecha dentro de nuestro horario de servicio. Intenta nuevamente, por favor.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    const slots = await findAvailableSlots({
+        startDate: dayStart,
+        maxSlots: MAX_SUGGESTION_SLOTS,
+        slotMinutes: SUGGESTION_SLOT_MINUTES,
+        timeZone,
+    })
+
+    const sameDaySlots = slots.filter(
+        (slot) =>
+            slot.dateParts.year === dateParts.year &&
+            slot.dateParts.month === dateParts.month &&
+            slot.dateParts.day === dateParts.day
+    )
+
+    if (!sameDaySlots.length) {
+        await clearAvailabilitySuggestions(state)
+        await sendChunkedMessages(
+            flowDynamic,
+            `No veo horarios disponibles para el ${formatDateForHumans(
+                dateParts
+            )}. Puedes indicarme otra fecha o pedir "Horarios disponibles" para revisar otras opciones.`,
+            { ctx, provider }
+        )
+        return true
+    }
+
+    const message = buildDateSpecificAvailabilityMessage(sameDaySlots, dateParts, timeZone)
+
+    await sendChunkedMessages(flowDynamic, message, {
+        ctx,
+        provider,
+        preserveFormatting: true,
+    })
+
+    const lastSlot = sameDaySlots[sameDaySlots.length - 1]
+
+    await state.update({
+        availabilitySuggestions: {
+            nextSearchIso: lastSlot.endDate.toISOString(),
+            timeZone,
+            slotMinutes: SUGGESTION_SLOT_MINUTES,
+        },
+    })
+
+    return true
+}
+
 const handleAvailabilityInquiry = async (ctx, tools) => {
     const message = ctx?.body?.trim()
     if (!message) return false
@@ -553,6 +649,163 @@ const handleAvailabilityInquiry = async (ctx, tools) => {
         fallbackMessage:
             'Por ahora no veo espacios disponibles dentro del horario de atención. Intenta más tarde o indícame otro horario de preferencia.',
     })
+
+    return true
+}
+
+const handleDateSpecificAvailability = async (ctx, tools) => {
+    const message = ctx?.body?.trim()
+    if (!message) return false
+
+    const { flowDynamic, state, provider } = tools
+
+    const userState = getUserState(state)
+    if (userState?.scheduling?.step === 'collectDate') {
+        return false
+    }
+
+    const dateParts = parseFlexibleDateInput(message, new Date())
+    if (!dateParts) {
+        return false
+    }
+
+    if (!isCalendarConfigured()) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Aún no tengo acceso a la agenda para consultar los horarios disponibles. Solicita al equipo técnico que complete la configuración de Google Calendar.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    const timezoneMatch = message.match(/GMT[+-]\d{1,2}|UTC[+-]\d{1,2}|[A-Za-z]+\/[A-Za-z_]+/)
+    const timeZone = normalizeTimeZoneInput(timezoneMatch ? timezoneMatch[0] : null) || DEFAULT_TIMEZONE
+
+    if (!isValidTimeZone(timeZone)) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No reconocí esa zona horaria. Puedes indicarme una zona en formato “America/Mexico_City” o “UTC-5”.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    if (!hasExplicitTimeReference(message)) {
+        return sendDateSpecificAvailability(ctx, tools, { dateParts, timeZone })
+    }
+
+    const parsedTime = parseFlexibleTimeInput(message)
+
+    if (parsedTime.status === 'invalid') {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré interpretar la hora. Dime algo como “11:30”, “1 pm” o “13 horas”.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    if (parsedTime.status === 'clarify') {
+        await sendChunkedMessages(
+            flowDynamic,
+            `¿Te refieres a las ${formatTimeForHumans(parsedTime.suggestion)}? Nuestro horario de atención es de 09:00 a 15:00. Elige un horario dentro de ese rango, por favor.`,
+            { ctx, provider }
+        )
+        return true
+    }
+
+    if (parsedTime.status === 'out_of_range') {
+        const attemptedTime = {
+            hour: parsedTime.hour,
+            minute: parsedTime.minute,
+        }
+        await sendChunkedMessages(
+            flowDynamic,
+            `El horario ${formatTimeForHumans(attemptedTime)} queda fuera de nuestro servicio. Podemos atenderte entre 09:00 y 15:00. Indícame otra hora dentro de ese rango.`,
+            { ctx, provider }
+        )
+        return true
+    }
+
+    const timeParts = {
+        hour: parsedTime.hour,
+        minute: parsedTime.minute,
+    }
+
+    const startDate = buildZonedDate(dateParts, timeParts, timeZone)
+    if (!startDate) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré interpretar la combinación de fecha, hora y zona horaria. Vamos a elegir el horario nuevamente.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    if (isWeekendInTimeZone(startDate, timeZone)) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Los sábados y domingos no ofrecemos atención en tiempo real ni llamadas. Elige un día entre lunes y viernes.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    const now = new Date()
+    if (startDate.getTime() - now.getTime() < noticeInMilliseconds) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Necesitamos al menos 1 hora de anticipación para agendar. Te comparto otras opciones para ese día.',
+            { ctx, provider }
+        )
+        await sendDateSpecificAvailability(ctx, tools, { dateParts, timeZone })
+        return true
+    }
+
+    const endInfo = addMinutesToDateTime(
+        dateParts,
+        timeParts,
+        DEFAULT_APPOINTMENT_DURATION_MINUTES
+    )
+    const endDate = buildZonedDate(endInfo.dateParts, endInfo.timeParts, timeZone)
+
+    if (!endDate) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré interpretar la hora de término para ese horario. Intenta con otra opción, por favor.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    try {
+        const conflict = await hasConflictingEvent({ startDate, endDate })
+        if (conflict) {
+            await sendChunkedMessages(
+                flowDynamic,
+                'Ya contamos con una cita en ese horario. Te comparto otras opciones disponibles para ese día.',
+                { ctx, provider }
+            )
+            await sendDateSpecificAvailability(ctx, tools, { dateParts, timeZone })
+            return true
+        }
+    } catch (error) {
+        console.error('Error al verificar disponibilidad del calendario:', error)
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré verificar la disponibilidad de ese horario. Intenta con otra hora o vuelve a intentarlo en unos minutos.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    await clearAvailabilitySuggestions(state)
+
+    await sendChunkedMessages(
+        flowDynamic,
+        `El ${formatDateForHumans(dateParts)} a las ${formatTimeForHumans(timeParts)} (${timeZone}) está disponible. Si quieres agendarlo, dime "Agendar cita" o indícame si prefieres otro horario.`,
+        { ctx, provider }
+    )
 
     return true
 }
@@ -1519,6 +1772,10 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
 const handleSchedulingFlow = async (ctx, tools) => {
     const message = ctx?.body?.trim()
     if (!message) return false
+
+    if (await handleDateSpecificAvailability(ctx, tools)) {
+        return true
+    }
 
     if (await handleAvailabilityInquiry(ctx, tools)) {
         return true
