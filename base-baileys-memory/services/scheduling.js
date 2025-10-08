@@ -343,7 +343,7 @@ const describeSlotDay = (slotDateParts, referenceDateParts, timeZone) => {
     return formatDateForHumans(slotDateParts)
 }
 
-const buildAvailabilityMessage = (slots, { intro }) => {
+const buildAvailabilityMessage = (slots, { intro, closing } = {}) => {
     const timeZone = DEFAULT_TIMEZONE
     const todayParts = getDatePartsInTimeZone(new Date(), timeZone)
     const lines = slots.map((slot) => {
@@ -353,11 +353,12 @@ const buildAvailabilityMessage = (slots, { intro }) => {
         )}`
     })
 
-    return [
-        intro,
-        ...lines,
-        '¿Alguno de esos horarios se acomoda? Para mostrar más horarios responde "mostrar más horarios".',
-    ].join('\n')
+    const heading = intro || 'Estas son las próximas opciones disponibles:'
+    const closingLine =
+        closing ||
+        '¿Alguno de esos horarios se acomoda? Para mostrar más horarios responde "mostrar más horarios".'
+
+    return [heading, ...lines, closingLine].join('\n')
 }
 
 const buildDateSpecificAvailabilityMessage = (slots, dateParts, timeZone) => {
@@ -408,13 +409,80 @@ const sendAvailabilitySuggestions = async (
 
     const lastSlot = slots[slots.length - 1]
 
+    await updateAvailabilitySuggestionsState(state, lastSlot)
+
+    return true
+}
+
+const updateAvailabilitySuggestionsState = async (state, slot) => {
+    if (!slot) {
+        await clearAvailabilitySuggestions(state)
+        return
+    }
+
     await state.update({
         availabilitySuggestions: {
-            nextSearchIso: lastSlot.endDate.toISOString(),
+            nextSearchIso: slot.endDate.toISOString(),
             timeZone: DEFAULT_TIMEZONE,
             slotMinutes: SUGGESTION_SLOT_MINUTES,
         },
     })
+}
+
+const getAvailabilityForDate = async (
+    dateParts,
+    { timeZone = DEFAULT_TIMEZONE, maxSlots = MAX_SUGGESTION_SLOTS } = {}
+) => {
+    if (!dateParts) return []
+
+    const startOfDay = buildZonedDate(
+        dateParts,
+        { hour: BUSINESS_START_HOUR, minute: 0 },
+        timeZone
+    )
+
+    if (!startOfDay) return []
+
+    const slots = await findAvailableSlots({
+        startDate: startOfDay,
+        maxSlots,
+        slotMinutes: SUGGESTION_SLOT_MINUTES,
+        timeZone,
+    })
+
+    return slots.filter(
+        (slot) =>
+            slot.dateParts.year === dateParts.year &&
+            slot.dateParts.month === dateParts.month &&
+            slot.dateParts.day === dateParts.day
+    )
+}
+
+const presentAvailabilitySlots = async (
+    ctx,
+    tools,
+    slots,
+    {
+        intro = 'Estas son las próximas opciones disponibles:',
+        closing = '¿Alguno de esos horarios se acomoda? Para mostrar más horarios responde "mostrar más horarios".',
+    } = {}
+) => {
+    const { flowDynamic, state, provider } = tools
+
+    if (!Array.isArray(slots) || !slots.length) {
+        await updateAvailabilitySuggestionsState(state, null)
+        return false
+    }
+
+    const message = buildAvailabilityMessage(slots, { intro, closing })
+
+    await sendChunkedMessages(flowDynamic, message, {
+        ctx,
+        provider,
+        preserveFormatting: true,
+    })
+
+    await updateAvailabilitySuggestionsState(state, slots[slots.length - 1])
 
     return true
 }
@@ -486,6 +554,8 @@ const handleAvailabilityInquiry = async (ctx, tools) => {
     if (!message) return false
 
     const { flowDynamic, state, provider } = tools
+    const userState = getUserState(state)
+    const schedulingStep = userState?.scheduling?.step
 
     if (SHOW_MORE_AVAILABILITY_PATTERNS.some((regex) => regex.test(message))) {
         if (!isCalendarConfigured()) {
@@ -521,6 +591,42 @@ const handleAvailabilityInquiry = async (ctx, tools) => {
         })
 
         return true
+    }
+
+    if (schedulingStep !== 'collectDate') {
+        const parsedDate = parseFlexibleDateInput(message, new Date())
+
+        if (parsedDate) {
+            if (!isCalendarConfigured()) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Aún no tengo acceso a la agenda. Pide al equipo técnico que finalice la configuración con Google Calendar.',
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            const slots = await getAvailabilityForDate(parsedDate)
+            const formattedDate = formatDateForHumans(parsedDate)
+
+            if (!slots.length) {
+                await clearAvailabilitySuggestions(state)
+                await sendChunkedMessages(
+                    flowDynamic,
+                    `Por ahora no veo horarios libres el ${formattedDate}. Puedes indicarme otra fecha o pedir "Horarios disponibles" para revisar opciones cercanas.`,
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            await presentAvailabilitySlots(ctx, tools, slots, {
+                intro: `Para ${formattedDate} tengo estos horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${DEFAULT_TIMEZONE}):`,
+                closing:
+                    'Si alguno de esos horarios te funciona, dime y agendamos tu cita. Para ver más opciones responde "mostrar más horarios".',
+            })
+
+            return true
+        }
     }
 
     if (!AVAILABILITY_QUERY_PATTERNS.some((regex) => regex.test(message))) {
@@ -809,6 +915,8 @@ const AVAILABILITY_QUERY_PATTERNS = [
     /horarios?\s+disponibles?/i,
     /disponibilidad\s+de\s+horarios?/i,
     /que\s+horarios?\s+tienen/i,
+    /disponibilidad\s+para\s+otro\s+d[ií]a/i,
+    /hay\s+disponibilidad\s+(?:el|para\s+el)\s+d[ií]a/i,
 ]
 
 const SHOW_MORE_AVAILABILITY_PATTERNS = [
@@ -1384,6 +1492,32 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             const normalizedDate = `${parsedDate.year}-${padNumber(parsedDate.month)}-${padNumber(
                 parsedDate.day
             )}`
+
+            const slots = await getAvailabilityForDate(parsedDate)
+
+            if (!slots.length) {
+                await clearAvailabilitySuggestions(state)
+                await sendChunkedMessages(
+                    flowDynamic,
+                    `Por ahora no tengo horarios disponibles el ${formatDateForHumans(parsedDate)}. Indícame otra fecha de lunes a viernes y reviso nuevamente.`,
+                    { ctx, provider }
+                )
+
+                const { date: _unusedDate, ...restData } = scheduling.data || {}
+
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectDate',
+                        data: {
+                            ...restData,
+                        },
+                    },
+                })
+
+                return true
+            }
+
             await state.update({
                 scheduling: {
                     step: 'collectTime',
@@ -1394,9 +1528,15 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 },
             })
 
+            await presentAvailabilitySlots(ctx, tools, slots, {
+                intro: `Para ${formatDateForHumans(parsedDate)} tengo estos horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${DEFAULT_TIMEZONE}):`,
+                closing:
+                    'Si alguno de esos horarios te funciona, dime y avanzamos con la confirmación. Para ver más opciones responde "mostrar más horarios".',
+            })
+
             await sendChunkedMessages(
                 flowDynamic,
-                `Tomé nota para el ${formatDateForHumans(parsedDate)}. ¿A qué hora te viene mejor? Puedes decir “1 pm”, “13:30” o “mediodía”. Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo.`,
+                `Tomé nota para el ${formatDateForHumans(parsedDate)}. ¿Cuál de esos horarios prefieres? Puedes decir “1 pm”, “13:30” o “mediodía”. Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo.`,
                 { ctx, provider }
             )
 

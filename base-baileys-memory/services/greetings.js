@@ -16,11 +16,15 @@ const isGreeting = (message = '') => {
     return GREETING_PATTERNS.some((pattern) => pattern.test(normalized))
 }
 
-const buildInitialGreetingMessages = () => [
-    '¡Hola! Soy el asistente virtual del Consejo de Enfermería.',
-    'Estoy aquí para acompañarte en tu proceso de homologación. Cuéntame, ¿en qué puedo ayudarte?',
-    ...buildMenuMessages(),
-]
+const buildInitialGreetingMessages = () => {
+    const menuMessages = buildMenuMessages()
+
+    return [
+        '¡Hola! Soy el asistente virtual del Consejo de Enfermería.',
+        'Estoy aquí para acompañarte en tu proceso de homologación. Cuéntame, ¿en qué puedo ayudarte?',
+        ...menuMessages,
+    ]
+}
 
 const buildRepeatedGreetingMessages = () => buildMenuMessages()
 
