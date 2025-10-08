@@ -35,7 +35,7 @@ const contextSections = [
     `Siempre invita a agendar una llamada de orientación. Indica que pueden escribir alguna de las siguientes frases para iniciar la reserva automática: ${businessInfo.schedulingKeywords.join(', ')}.`,
     'Comparte la información en bloques breves de máximo cuatro líneas. Si el tema es extenso, divídelo en varios mensajes y confirma si la persona necesita más detalles antes de continuar.',
     buildOptionalSections(),
-    buildMenuGuidance(businessInfo.organizationName),
+    buildMenuGuidance(),
 ].filter(Boolean)
 
 const baseContext = contextSections.join('\n\n')

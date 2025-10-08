@@ -29,15 +29,12 @@ const { getGeminiReply } = require('./services/gemini')
 const { contextMessages } = require('./services/context')
 const { handleSchedulingFlow } = require('./services/scheduling')
 const { sendChunkedMessages } = require('./services/message-utils')
-const { maybeReactToMessage } = require('./services/reactions')
 
 const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state, provider }) => {
     const message = ctx?.body?.trim()
     if (!message) return
 
     const normalizedMessage = message.toLowerCase()
-    await maybeReactToMessage(ctx, provider)
-
     if (['reset', 'reiniciar', 'limpiar'].includes(normalizedMessage)) {
         await state.clear()
         await sendChunkedMessages(
