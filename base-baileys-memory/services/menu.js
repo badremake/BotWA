@@ -31,12 +31,23 @@ const menuSections = [
     },
 ]
 
-const buildMenuExample = () => {
-    const header = 'Este es nuestro menú:'
-    const lines = menuSections.map((section) => `${section.emoji} ${section.title}`)
+const MENU_KEYWORDS = ['menu', 'menú']
 
-    return [header, ...lines].join('\n')
-}
+const stripDiacritics = (text) =>
+    String(text ?? '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLowerCase()
+
+const escapeRegExp = (text) => String(text).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+
+const buildMenuBody = () => `Escribe la opción que necesites:
+
+${menuSections.map((section) => `${section.emoji} ${section.title}`).join('\n')}`
+
+const buildMenuMessages = () => ['Este es nuestro menú:', buildMenuBody()]
+
+const buildMenuExample = () => buildMenuMessages().join('\n\n')
 
 const buildMenuGuidance = () =>
     [
@@ -48,8 +59,23 @@ const buildMenuGuidance = () =>
         buildMenuExample(),
     ].join('\n')
 
+const isMenuRequest = (message = '') => {
+    if (!message || typeof message !== 'string') return false
+
+    const normalized = stripDiacritics(message)
+
+    return MENU_KEYWORDS.some((keyword) => {
+        const normalizedKeyword = stripDiacritics(keyword)
+        if (!normalizedKeyword) return false
+        const pattern = new RegExp(`\\b${escapeRegExp(normalizedKeyword)}\\b`, 'u')
+        return pattern.test(normalized)
+    })
+}
+
 module.exports = {
     menuSections,
     buildMenuExample,
     buildMenuGuidance,
+    buildMenuMessages,
+    isMenuRequest,
 }
