@@ -176,4 +176,5 @@ module.exports = {
     createCalendarEvent,
     isCalendarConfigured,
     hasConflictingEvent,
+    listCalendarEvents,
 }

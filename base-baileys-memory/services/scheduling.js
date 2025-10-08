@@ -3,14 +3,18 @@ const {
     createCalendarEvent,
     hasConflictingEvent,
     isCalendarConfigured,
+    listCalendarEvents,
 } = require('./calendar')
 const { sendChunkedMessages } = require('./message-utils')
 
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Mexico_City'
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = Number(
-    process.env.DEFAULT_APPOINTMENT_DURATION_MINUTES || 45
+    process.env.DEFAULT_APPOINTMENT_DURATION_MINUTES || 30
 )
-const MINIMUM_NOTICE_MINUTES = 120
+const MINIMUM_NOTICE_MINUTES = 60
+const SUGGESTION_SLOT_MINUTES = 30
+const MAX_SUGGESTION_SLOTS = 5
+const MAX_SUGGESTION_DAYS = 14
 
 const MONTH_NAMES = [
     'enero',
@@ -92,6 +96,360 @@ const formatDateForHumans = (dateParts) =>
 const formatTimeForHumans = (timeParts) => `${padNumber(timeParts.hour)}:${padNumber(timeParts.minute)}`
 
 const noticeInMilliseconds = MINIMUM_NOTICE_MINUTES * 60 * 1000
+
+const minutesToMilliseconds = (minutes) => minutes * 60 * 1000
+
+const getDatePartsInTimeZone = (date, timeZone) => {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    })
+    const parts = buildFormatterPartsObject(formatter.formatToParts(date))
+
+    const year = toNumberOr(parts.year)
+    const month = toNumberOr(parts.month)
+    const day = toNumberOr(parts.day)
+
+    if ([year, month, day].some((value) => Number.isNaN(value))) {
+        return null
+    }
+
+    return { year, month, day }
+}
+
+const getTimePartsInTimeZone = (date, timeZone) => {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    })
+    const parts = buildFormatterPartsObject(formatter.formatToParts(date))
+
+    const hour = toNumberOr(parts.hour)
+    const minute = toNumberOr(parts.minute)
+
+    if ([hour, minute].some((value) => Number.isNaN(value))) {
+        return null
+    }
+
+    return { hour, minute }
+}
+
+const alignSlotStart = (candidate, dayStart, slotMinutes) => {
+    const diff = candidate.getTime() - dayStart.getTime()
+    if (diff <= 0) {
+        return new Date(dayStart.getTime())
+    }
+
+    const interval = minutesToMilliseconds(slotMinutes)
+    const multiplier = Math.ceil(diff / interval)
+    return new Date(dayStart.getTime() + multiplier * interval)
+}
+
+const parseEventBoundary = (boundary) => {
+    if (!boundary) return null
+    if (boundary.dateTime) {
+        const candidate = new Date(boundary.dateTime)
+        if (!Number.isNaN(candidate.getTime())) {
+            return candidate
+        }
+    }
+
+    if (boundary.date) {
+        const candidate = new Date(`${boundary.date}T00:00:00Z`)
+        if (!Number.isNaN(candidate.getTime())) {
+            return candidate
+        }
+    }
+
+    return null
+}
+
+const buildBusyIntervals = (events = []) =>
+    events
+        .filter((event) => event?.status !== 'cancelled')
+        .map((event) => ({
+            start: parseEventBoundary(event?.start),
+            end: parseEventBoundary(event?.end),
+        }))
+        .filter(({ start, end }) => start instanceof Date && end instanceof Date)
+        .sort((a, b) => a.start.getTime() - b.start.getTime())
+
+const isSlotFree = (busyIntervals, slotStart, slotEnd) =>
+    busyIntervals.every(({ start, end }) => slotEnd <= start || slotStart >= end)
+
+const getUserState = (state) =>
+    (typeof state.getMyState === 'function' ? state.getMyState() : state) || {}
+
+const clearAvailabilitySuggestions = async (state) => {
+    await state.update({ availabilitySuggestions: null })
+}
+
+const findAvailableSlots = async ({
+    startDate = new Date(),
+    maxSlots = 2,
+    slotMinutes = SUGGESTION_SLOT_MINUTES,
+    timeZone = DEFAULT_TIMEZONE,
+} = {}) => {
+    if (!isCalendarConfigured()) return []
+
+    const baseline = new Date(Date.now() + noticeInMilliseconds)
+    const effectiveStart =
+        startDate && startDate.getTime() > baseline.getTime() ? startDate : baseline
+
+    const slots = []
+    let searchDate = new Date(effectiveStart.getTime())
+    let daysChecked = 0
+
+    while (slots.length < maxSlots && daysChecked < MAX_SUGGESTION_DAYS) {
+        const dayParts = getDatePartsInTimeZone(searchDate, timeZone)
+        if (!dayParts) break
+
+        const midday = buildZonedDate(dayParts, { hour: 12, minute: 0 }, timeZone)
+        if (!midday) break
+
+        if (isWeekendInTimeZone(midday, timeZone)) {
+            const nextDayInfo = addMinutesToDateTime(dayParts, { hour: 0, minute: 0 }, 24 * 60)
+            searchDate = buildZonedDate(nextDayInfo.dateParts, nextDayInfo.timeParts, timeZone)
+            daysChecked += 1
+            continue
+        }
+
+        const dayStart = buildZonedDate(
+            dayParts,
+            { hour: BUSINESS_START_HOUR, minute: 0 },
+            timeZone
+        )
+        const dayEnd = buildZonedDate(
+            dayParts,
+            { hour: BUSINESS_END_HOUR, minute: 0 },
+            timeZone
+        )
+
+        if (!dayStart || !dayEnd) {
+            break
+        }
+
+        let earliestStart = dayStart.getTime() > effectiveStart.getTime()
+            ? dayStart
+            : effectiveStart
+
+        earliestStart = alignSlotStart(new Date(earliestStart.getTime()), dayStart, slotMinutes)
+
+        let events = []
+        try {
+            const response = await listCalendarEvents({
+                timeMin: dayStart.toISOString(),
+                timeMax: dayEnd.toISOString(),
+            })
+            events = Array.isArray(response?.items) ? response.items : []
+        } catch (error) {
+            console.error('Error al obtener eventos del calendario:', error)
+            break
+        }
+
+        const busyIntervals = buildBusyIntervals(events)
+        const intervalMs = minutesToMilliseconds(slotMinutes)
+
+        for (
+            let slotStart = new Date(earliestStart.getTime());
+            slotStart.getTime() < dayEnd.getTime() && slots.length < maxSlots;
+            slotStart = new Date(slotStart.getTime() + intervalMs)
+        ) {
+            const slotEnd = new Date(slotStart.getTime() + intervalMs)
+            if (slotEnd.getTime() > dayEnd.getTime()) {
+                break
+            }
+
+            if (!isSlotFree(busyIntervals, slotStart, slotEnd)) {
+                continue
+            }
+
+            const timeParts = getTimePartsInTimeZone(slotStart, timeZone)
+            const endTimeParts = getTimePartsInTimeZone(slotEnd, timeZone)
+
+            if (!timeParts || !endTimeParts) {
+                continue
+            }
+
+            slots.push({
+                startDate: new Date(slotStart.getTime()),
+                endDate: new Date(slotEnd.getTime()),
+                dateParts: { ...dayParts },
+                timeParts,
+                endTimeParts,
+            })
+        }
+
+        const nextDayInfo = addMinutesToDateTime(dayParts, { hour: 0, minute: 0 }, 24 * 60)
+        const nextDayStart = buildZonedDate(nextDayInfo.dateParts, nextDayInfo.timeParts, timeZone)
+        if (!nextDayStart) {
+            break
+        }
+
+        searchDate = new Date(
+            Math.max(nextDayStart.getTime(), effectiveStart.getTime())
+        )
+        daysChecked += 1
+    }
+
+    return slots
+}
+
+const describeSlotDay = (slotDateParts, referenceDateParts, timeZone) => {
+    const referenceStart = buildZonedDate(referenceDateParts, { hour: 0, minute: 0 }, timeZone)
+    const slotStart = buildZonedDate(slotDateParts, { hour: 0, minute: 0 }, timeZone)
+
+    if (!referenceStart || !slotStart) {
+        return formatDateForHumans(slotDateParts)
+    }
+
+    const diffDays = Math.round(
+        (slotStart.getTime() - referenceStart.getTime()) / (24 * 60 * 60 * 1000)
+    )
+
+    if (diffDays === 0) {
+        return `Hoy (${formatDateForHumans(slotDateParts)})`
+    }
+
+    if (diffDays === 1) {
+        return `Mañana (${formatDateForHumans(slotDateParts)})`
+    }
+
+    return formatDateForHumans(slotDateParts)
+}
+
+const buildAvailabilityMessage = (slots, { intro }) => {
+    const timeZone = DEFAULT_TIMEZONE
+    const todayParts = getDatePartsInTimeZone(new Date(), timeZone)
+    const lines = slots.map((slot) => {
+        const dayLabel = describeSlotDay(slot.dateParts, todayParts, timeZone)
+        return `• ${dayLabel} de ${formatTimeForHumans(slot.timeParts)} a ${formatTimeForHumans(
+            slot.endTimeParts
+        )}`
+    })
+
+    return [
+        intro,
+        ...lines,
+        '¿Alguno de esos horarios se acomoda? Para mostrar más horarios responde "mostrar más horarios".',
+    ].join('\n')
+}
+
+const sendAvailabilitySuggestions = async (
+    ctx,
+    { flowDynamic, state, provider },
+    {
+        startDate = new Date(),
+        maxSlots = 2,
+        intro = 'Estas son las próximas opciones disponibles:',
+        fallbackMessage = 'Por ahora no veo horarios disponibles dentro del horario de atención.',
+    } = {}
+) => {
+    const slots = await findAvailableSlots({
+        startDate,
+        maxSlots,
+        slotMinutes: SUGGESTION_SLOT_MINUTES,
+        timeZone: DEFAULT_TIMEZONE,
+    })
+
+    if (!slots.length) {
+        await clearAvailabilitySuggestions(state)
+        if (fallbackMessage) {
+            await sendChunkedMessages(flowDynamic, fallbackMessage, { ctx, provider })
+        }
+        return false
+    }
+
+    const message = buildAvailabilityMessage(slots, { intro })
+
+    await sendChunkedMessages(flowDynamic, message, {
+        ctx,
+        provider,
+        preserveFormatting: true,
+    })
+
+    const lastSlot = slots[slots.length - 1]
+
+    await state.update({
+        availabilitySuggestions: {
+            nextSearchIso: lastSlot.endDate.toISOString(),
+            timeZone: DEFAULT_TIMEZONE,
+            slotMinutes: SUGGESTION_SLOT_MINUTES,
+        },
+    })
+
+    return true
+}
+
+const handleAvailabilityInquiry = async (ctx, tools) => {
+    const message = ctx?.body?.trim()
+    if (!message) return false
+
+    const { flowDynamic, state, provider } = tools
+
+    if (SHOW_MORE_AVAILABILITY_PATTERNS.some((regex) => regex.test(message))) {
+        if (!isCalendarConfigured()) {
+            await sendChunkedMessages(
+                flowDynamic,
+                'Aún no tengo acceso a la agenda. Pide al equipo técnico que finalice la configuración con Google Calendar.',
+                { ctx, provider }
+            )
+            return true
+        }
+
+        const userState = getUserState(state)
+        const suggestionsState = userState.availabilitySuggestions
+
+        if (!suggestionsState?.nextSearchIso) {
+            await sendChunkedMessages(
+                flowDynamic,
+                'Pídeme primero "Horarios disponibles" para poder mostrarte las opciones más recientes.',
+                { ctx, provider }
+            )
+            return true
+        }
+
+        const startDate = new Date(suggestionsState.nextSearchIso)
+        const validStartDate = Number.isNaN(startDate.getTime()) ? new Date() : startDate
+
+        await sendAvailabilitySuggestions(ctx, tools, {
+            startDate: validStartDate,
+            maxSlots: MAX_SUGGESTION_SLOTS,
+            intro: `Aquí tienes más horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${DEFAULT_TIMEZONE}):`,
+            fallbackMessage:
+                'Por ahora no tengo más horarios disponibles dentro del horario de atención. Intenta más tarde o elige alguno de los horarios sugeridos anteriormente.',
+        })
+
+        return true
+    }
+
+    if (!AVAILABILITY_QUERY_PATTERNS.some((regex) => regex.test(message))) {
+        return false
+    }
+
+    if (!isCalendarConfigured()) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Aún no tengo acceso a la agenda para consultar los horarios disponibles. Solicita al equipo técnico que complete la configuración de Google Calendar.',
+            { ctx, provider }
+        )
+        return true
+    }
+
+    await sendAvailabilitySuggestions(ctx, tools, {
+        startDate: new Date(),
+        maxSlots: MAX_SUGGESTION_SLOTS,
+        intro: `Estos son los siguientes horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${DEFAULT_TIMEZONE}):`,
+        fallbackMessage:
+            'Por ahora no veo espacios disponibles dentro del horario de atención. Intenta más tarde o indícame otro horario de preferencia.',
+    })
+
+    return true
+}
 
 const buildFormatterPartsObject = (parts) =>
     parts.reduce((acc, part) => {
@@ -194,9 +552,21 @@ const BUSINESS_END_HOUR = 15
 
 const CANCEL_KEYWORDS = [/cancelar/i, /ya\s+no/i]
 
+const AVAILABILITY_QUERY_PATTERNS = [
+    /horarios?\s+disponibles?/i,
+    /disponibilidad\s+de\s+horarios?/i,
+    /que\s+horarios?\s+tienen/i,
+]
+
+const SHOW_MORE_AVAILABILITY_PATTERNS = [
+    /mostrar\s+m[aá]s\s+horarios?/i,
+    /m[aá]s\s+horarios?/i,
+]
+
 const resetSchedulingState = async (state) => {
     await state.update({
         scheduling: null,
+        availabilitySuggestions: null,
     })
 }
 
@@ -217,11 +587,12 @@ const startSchedulingFlow = async (ctx, { flowDynamic, state, provider }) => {
                 phone: ctx.from,
             },
         },
+        availabilitySuggestions: null,
     })
 
     await sendChunkedMessages(
         flowDynamic,
-        '¡Perfecto! Empecemos con tu cita. Atendemos llamadas de lunes a viernes y necesitamos al menos 2 horas de anticipación. ¿Cuál es tu nombre completo?',
+        '¡Perfecto! Empecemos con tu cita. Atendemos llamadas de lunes a viernes y necesitamos al menos 1 hora de anticipación. ¿Cuál es tu nombre completo?',
         { ctx, provider }
     )
 
@@ -553,9 +924,17 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
     if (startDate.getTime() - now.getTime() < noticeInMilliseconds) {
         await sendChunkedMessages(
             flowDynamic,
-            'Necesitamos al menos 2 horas de anticipación para agendar. Indícame otro horario que cumpla con ese requisito.',
+            'Necesitamos al menos 1 hora de anticipación para agendar. Indícame otro horario que cumpla con ese requisito.',
             { ctx, provider }
         )
+        const suggestionZone = scheduling?.data?.timeZone || DEFAULT_TIMEZONE
+        await sendAvailabilitySuggestions(ctx, { flowDynamic, state, provider }, {
+            startDate: new Date(Date.now() + noticeInMilliseconds),
+            maxSlots: 2,
+            intro: `Estas opciones cumplen con la anticipación mínima de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${suggestionZone}):`,
+            fallbackMessage:
+                'Por ahora no hay espacios que cumplan con la anticipación mínima. Intenta con otro horario o pide "Horarios disponibles".',
+        })
 
         await state.update({
             scheduling: {
@@ -888,8 +1267,19 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             if (startDate.getTime() - now.getTime() < noticeInMilliseconds) {
                 await sendChunkedMessages(
                     flowDynamic,
-                    'Necesitamos al menos 2 horas de anticipación para agendar. Indícame otro horario que cumpla con ese requisito.',
+                    'Necesitamos al menos 1 hora de anticipación para agendar. Indícame otro horario que cumpla con ese requisito.',
                     { ctx, provider }
+                )
+                await sendAvailabilitySuggestions(
+                    ctx,
+                    { flowDynamic, state, provider },
+                    {
+                        startDate: new Date(Date.now() + noticeInMilliseconds),
+                        maxSlots: 2,
+                        intro: `Estas opciones cumplen con la anticipación mínima de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${timeZone}):`,
+                        fallbackMessage:
+                            'Por ahora no hay espacios que cumplan con la anticipación mínima. Puedes pedir "Horarios disponibles" para revisar más opciones.',
+                    }
                 )
                 return true
             }
@@ -918,6 +1308,13 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                         'Ya contamos con una cita en ese horario. Elige otra hora disponible dentro del horario de atención.',
                         { ctx, provider }
                     )
+                    await sendAvailabilitySuggestions(ctx, { flowDynamic, state, provider }, {
+                        startDate,
+                        maxSlots: 2,
+                        intro: `Estas opciones están libres en lapsos de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${timeZone}):`,
+                        fallbackMessage:
+                            'Por ahora no encuentro horarios libres cercanos. Puedes pedir "Horarios disponibles" para revisar más opciones.',
+                    })
                     return true
                 }
             } catch (error) {
@@ -929,6 +1326,8 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 )
                 return true
             }
+
+            await clearAvailabilitySuggestions(state)
 
             await state.update({
                 scheduling: {
@@ -981,9 +1380,11 @@ const handleSchedulingFlow = async (ctx, tools) => {
     const message = ctx?.body?.trim()
     if (!message) return false
 
-    const userState = (typeof tools.state.getMyState === 'function'
-        ? tools.state.getMyState()
-        : tools.state) || {}
+    if (await handleAvailabilityInquiry(ctx, tools)) {
+        return true
+    }
+
+    const userState = getUserState(tools.state)
     const scheduling = userState.scheduling
 
     if (scheduling?.step) {
