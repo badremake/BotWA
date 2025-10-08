@@ -99,7 +99,81 @@ const createCalendarEvent = async ({
     return response.json()
 }
 
+const listCalendarEvents = async ({ timeMin, timeMax }) => {
+    const accessToken = await fetchAccessToken()
+    const calendarId = process.env.GOOGLE_CALENDAR_ID
+
+    const url = new URL(
+        `${CALENDAR_BASE_URL}/calendars/${encodeURIComponent(calendarId)}/events`
+    )
+
+    if (timeMin) {
+        url.searchParams.set('timeMin', timeMin)
+    }
+
+    if (timeMax) {
+        url.searchParams.set('timeMax', timeMax)
+    }
+
+    url.searchParams.set('singleEvents', 'true')
+    url.searchParams.set('orderBy', 'startTime')
+
+    const response = await fetch(url, {
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
+    })
+
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        const errorMessage =
+            errorBody?.error?.message ||
+            `Error HTTP ${response.status}: ${response.statusText}`
+        const error = new Error(errorMessage)
+        error.code = response.status
+        error.details = errorBody
+        throw error
+    }
+
+    return response.json()
+}
+
+const parseEventDateTime = (eventDate) => {
+    if (!eventDate) return null
+
+    if (eventDate.dateTime) {
+        return new Date(eventDate.dateTime)
+    }
+
+    if (eventDate.date) {
+        return new Date(`${eventDate.date}T00:00:00Z`)
+    }
+
+    return null
+}
+
+const hasConflictingEvent = async ({ startDate, endDate }) => {
+    const response = await listCalendarEvents({
+        timeMin: startDate.toISOString(),
+        timeMax: endDate.toISOString(),
+    })
+
+    const events = Array.isArray(response?.items) ? response.items : []
+
+    return events.some((event) => {
+        if (event.status === 'cancelled') return false
+
+        const eventStart = parseEventDateTime(event.start)
+        const eventEnd = parseEventDateTime(event.end)
+
+        if (!eventStart || !eventEnd) return false
+
+        return eventStart < endDate && eventEnd > startDate
+    })
+}
+
 module.exports = {
     createCalendarEvent,
     isCalendarConfigured,
+    hasConflictingEvent,
 }

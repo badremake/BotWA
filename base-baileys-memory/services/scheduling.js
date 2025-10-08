@@ -1,11 +1,16 @@
 const { businessInfo } = require('./context')
-const { createCalendarEvent, isCalendarConfigured } = require('./calendar')
+const {
+    createCalendarEvent,
+    hasConflictingEvent,
+    isCalendarConfigured,
+} = require('./calendar')
 const { sendChunkedMessages } = require('./message-utils')
 
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Mexico_City'
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = Number(
     process.env.DEFAULT_APPOINTMENT_DURATION_MINUTES || 45
 )
+const MINIMUM_NOTICE_MINUTES = 120
 
 const MONTH_NAMES = [
     'enero',
@@ -86,6 +91,99 @@ const formatDateForHumans = (dateParts) =>
 
 const formatTimeForHumans = (timeParts) => `${padNumber(timeParts.hour)}:${padNumber(timeParts.minute)}`
 
+const noticeInMilliseconds = MINIMUM_NOTICE_MINUTES * 60 * 1000
+
+const buildFormatterPartsObject = (parts) =>
+    parts.reduce((acc, part) => {
+        if (part.type !== 'literal') {
+            acc[part.type] = part.value
+        }
+        return acc
+    }, {})
+
+const toNumberOr = (value, fallback = 0) => {
+    const number = Number(value)
+    return Number.isNaN(number) ? fallback : number
+}
+
+const buildZonedDate = (dateParts, timeParts, timeZone) => {
+    if (!dateParts || !timeParts) return null
+
+    const desiredUtc = Date.UTC(
+        dateParts.year,
+        dateParts.month - 1,
+        dateParts.day,
+        timeParts.hour,
+        timeParts.minute,
+        0
+    )
+
+    let guess = desiredUtc
+
+    try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        })
+
+        for (let index = 0; index < 3; index += 1) {
+            const formattedParts = buildFormatterPartsObject(
+                formatter.formatToParts(new Date(guess))
+            )
+
+            const localUtc = Date.UTC(
+                toNumberOr(formattedParts.year, dateParts.year),
+                toNumberOr(formattedParts.month, dateParts.month) - 1,
+                toNumberOr(formattedParts.day, dateParts.day),
+                toNumberOr(formattedParts.hour, timeParts.hour),
+                toNumberOr(formattedParts.minute, timeParts.minute),
+                toNumberOr(formattedParts.second, 0)
+            )
+
+            const diff = desiredUtc - localUtc
+
+            guess += diff
+
+            if (Math.abs(diff) < 1000) {
+                break
+            }
+        }
+    } catch (error) {
+        if (error instanceof RangeError) {
+            return null
+        }
+        throw error
+    }
+
+    return new Date(guess)
+}
+
+const isWeekendInTimeZone = (date, timeZone) => {
+    const weekday = new Intl.DateTimeFormat('es-MX', {
+        weekday: 'long',
+        timeZone,
+    })
+        .format(date)
+        .toLowerCase()
+
+    return weekday.includes('sábado') || weekday.includes('sabado') || weekday.includes('domingo')
+}
+
+const isValidTimeZone = (timeZone) => {
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date())
+        return true
+    } catch (error) {
+        return false
+    }
+}
+
 const START_KEYWORDS = [
     /agendar\s+(una\s+)?(cita|llamada)/i,
     /reservar\s+(una\s+)?(cita|llamada)/i,
@@ -123,7 +221,7 @@ const startSchedulingFlow = async (ctx, { flowDynamic, state, provider }) => {
 
     await sendChunkedMessages(
         flowDynamic,
-        '¡Perfecto! Empecemos con tu cita. ¿Cuál es tu nombre completo?',
+        '¡Perfecto! Empecemos con tu cita. Atendemos llamadas de lunes a viernes y necesitamos al menos 2 horas de anticipación. ¿Cuál es tu nombre completo?',
         { ctx, provider }
     )
 
@@ -397,8 +495,134 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
         return true
     }
 
+    if (!isValidTimeZone(zone)) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'La zona horaria configurada no es válida. Indícame nuevamente un horario válido, por favor.',
+            { ctx, provider }
+        )
+
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectTime',
+            },
+        })
+        return true
+    }
+
+    const startDate = buildZonedDate(dateParts, timeParts, zone)
+
+    if (!startDate) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré interpretar la combinación de fecha, hora y zona horaria. Vamos a elegir el horario nuevamente.',
+            { ctx, provider }
+        )
+
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectTime',
+            },
+        })
+        return true
+    }
+
+    if (isWeekendInTimeZone(startDate, zone)) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Los sábados y domingos no ofrecemos atención en tiempo real ni llamadas. Elige un día de lunes a viernes, por favor.',
+            { ctx, provider }
+        )
+
+        const { notes: _notes, ...restData } = scheduling.data
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectDate',
+                data: {
+                    ...restData,
+                },
+            },
+        })
+        return true
+    }
+
+    const now = new Date()
+    if (startDate.getTime() - now.getTime() < noticeInMilliseconds) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'Necesitamos al menos 2 horas de anticipación para agendar. Indícame otro horario que cumpla con ese requisito.',
+            { ctx, provider }
+        )
+
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectTime',
+            },
+        })
+        return true
+    }
+
     const startIso = buildIsoDateTime(dateParts, timeParts)
-    const endInfo = addMinutesToDateTime(dateParts, timeParts, DEFAULT_APPOINTMENT_DURATION_MINUTES)
+    const endInfo = addMinutesToDateTime(
+        dateParts,
+        timeParts,
+        DEFAULT_APPOINTMENT_DURATION_MINUTES
+    )
+    const endDate = buildZonedDate(endInfo.dateParts, endInfo.timeParts, zone)
+
+    if (!endDate) {
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré interpretar la hora de término para ese horario. Intentemos de nuevo con otro horario.',
+            { ctx, provider }
+        )
+
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectTime',
+            },
+        })
+        return true
+    }
+
+    try {
+        const conflict = await hasConflictingEvent({ startDate, endDate })
+        if (conflict) {
+            await sendChunkedMessages(
+                flowDynamic,
+                'Ya existe una cita reservada para ese horario. Elige otro horario disponible dentro del rango de atención.',
+                { ctx, provider }
+            )
+
+            await state.update({
+                scheduling: {
+                    ...scheduling,
+                    step: 'collectTime',
+                },
+            })
+            return true
+        }
+    } catch (error) {
+        console.error('Error al verificar disponibilidad del calendario:', error)
+        await sendChunkedMessages(
+            flowDynamic,
+            'No logré verificar la disponibilidad del calendario en este momento. Intenta con otro horario o vuelve a intentarlo más tarde.',
+            { ctx, provider }
+        )
+
+        await state.update({
+            scheduling: {
+                ...scheduling,
+                step: 'collectTime',
+            },
+        })
+        return true
+    }
 
     try {
         const event = await createCalendarEvent({
@@ -506,7 +730,7 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
 
             await sendChunkedMessages(
                 flowDynamic,
-                'Perfecto. ¿Para qué fecha necesitas la llamada? Puedes escribirla como “15 de mayo”, “15/05” o con tu formato preferido.',
+                'Perfecto. ¿Para qué fecha necesitas la llamada? Puedes escribirla como “15 de mayo”, “15/05” o con tu formato preferido. Recuerda que las llamadas se agendan de lunes a viernes.',
                 { ctx, provider }
             )
 
@@ -569,15 +793,23 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             }
 
             if (parsedTime.status === 'out_of_range') {
+                const attemptedTime = {
+                    hour: parsedTime.hour,
+                    minute: parsedTime.minute,
+                }
                 await sendChunkedMessages(
                     flowDynamic,
-                    `El horario ${formatTimeForHumans(parsedTime)} queda fuera de nuestro servicio. Podemos atenderte entre 09:00 y 15:00. Indícame otra hora dentro de ese rango.`,
+                    `El horario ${formatTimeForHumans(attemptedTime)} queda fuera de nuestro servicio. Podemos atenderte entre 09:00 y 15:00. Indícame otra hora dentro de ese rango.`,
                     { ctx, provider }
                 )
                 return true
             }
 
-            const time = `${padNumber(parsedTime.hour)}:${padNumber(parsedTime.minute)}`
+            const timeParts = {
+                hour: parsedTime.hour,
+                minute: parsedTime.minute,
+            }
+            const time = `${padNumber(timeParts.hour)}:${padNumber(timeParts.minute)}`
             let timeZone = DEFAULT_TIMEZONE
             if (timezoneMatch) {
                 const rawZone = timezoneMatch[0]
@@ -588,6 +820,114 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 } else {
                     timeZone = rawZone
                 }
+            }
+
+            if (!isValidTimeZone(timeZone)) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'No reconocí esa zona horaria. Puedes indicarme una zona en formato “America/Mexico_City” o “UTC-5”.',
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            const dateParts = parseDateParts(scheduling.data.date)
+            if (!dateParts) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Necesito que elijamos nuevamente la fecha antes de continuar con el horario.',
+                    { ctx, provider }
+                )
+
+                const { date: _ignoredDate, ...restData } = scheduling.data
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectDate',
+                        data: {
+                            ...restData,
+                        },
+                    },
+                })
+
+                return true
+            }
+
+            const startDate = buildZonedDate(dateParts, timeParts, timeZone)
+            if (!startDate) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'No logré interpretar la fecha y hora con la zona horaria indicada. Inténtalo nuevamente, por favor.',
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            if (isWeekendInTimeZone(startDate, timeZone)) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Los sábados y domingos no ofrecemos atención en tiempo real ni llamadas. Elige un día entre lunes y viernes.',
+                    { ctx, provider }
+                )
+
+                const { date: _date, ...restData } = scheduling.data
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectDate',
+                        data: {
+                            ...restData,
+                        },
+                    },
+                })
+
+                return true
+            }
+
+            const now = new Date()
+            if (startDate.getTime() - now.getTime() < noticeInMilliseconds) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Necesitamos al menos 2 horas de anticipación para agendar. Indícame otro horario que cumpla con ese requisito.',
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            const endInfo = addMinutesToDateTime(
+                dateParts,
+                timeParts,
+                DEFAULT_APPOINTMENT_DURATION_MINUTES
+            )
+            const endDate = buildZonedDate(endInfo.dateParts, endInfo.timeParts, timeZone)
+
+            if (!endDate) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'No logré interpretar la hora de término para ese horario. Intenta con otra opción, por favor.',
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            try {
+                const conflict = await hasConflictingEvent({ startDate, endDate })
+                if (conflict) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'Ya contamos con una cita en ese horario. Elige otra hora disponible dentro del horario de atención.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+            } catch (error) {
+                console.error('Error al verificar disponibilidad del calendario:', error)
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'No logré verificar la disponibilidad de ese horario. Intenta con otra hora o vuelve a intentarlo en unos minutos.',
+                    { ctx, provider }
+                )
+                return true
             }
 
             await state.update({

@@ -36,6 +36,11 @@ const {
 } = require('./services/agent-handoff')
 const { handleSchedulingFlow } = require('./services/scheduling')
 const { sendChunkedMessages } = require('./services/message-utils')
+const {
+    buildInitialGreetingMessages,
+    buildRepeatedGreetingMessages,
+    isGreeting,
+} = require('./services/greetings')
 
 const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state, provider }) => {
     const message = ctx?.body?.trim()
@@ -44,6 +49,7 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     const isFromAgent = Boolean(ctx?.key?.fromMe)
     const userState = state.getMyState() || {}
     const agentChatActive = Boolean(userState.agentChatActive)
+    const greetingCount = Number(userState.greetingCount || 0)
 
     if (isFromAgent) {
         if (isAgentHandoffStartCommand(message)) {
@@ -63,6 +69,35 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             { ctx, provider }
         )
         return
+    }
+
+    if (isGreeting(message)) {
+        if (agentChatActive) {
+            return
+        }
+
+        if (greetingCount === 0) {
+            await state.update({ greetingCount: 1 })
+            await sendChunkedMessages(flowDynamic, buildInitialGreetingMessages(), {
+                ctx,
+                provider,
+            })
+        } else if (greetingCount === 1) {
+            await state.update({ greetingCount: 2 })
+        } else {
+            await state.update({ greetingCount: greetingCount + 1 })
+            await sendChunkedMessages(flowDynamic, buildRepeatedGreetingMessages(), {
+                ctx,
+                provider,
+                preserveFormatting: true,
+            })
+        }
+
+        return
+    }
+
+    if (greetingCount !== 0) {
+        await state.update({ greetingCount: 0 })
     }
 
     if (isMenuRequest(message)) {
