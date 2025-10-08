@@ -19,6 +19,7 @@ const isGreeting = (message = '') => {
 const buildInitialGreetingMessages = () => [
     '¡Hola! Soy el asistente virtual del Consejo de Enfermería.',
     'Estoy aquí para acompañarte en tu proceso de homologación. Cuéntame, ¿en qué puedo ayudarte?',
+    ...buildMenuMessages(),
 ]
 
 const buildRepeatedGreetingMessages = () => buildMenuMessages()
