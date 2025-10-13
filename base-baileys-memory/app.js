@@ -88,6 +88,7 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             await sendChunkedMessages(flowDynamic, buildInitialGreetingMessages(), {
                 ctx,
                 provider,
+                preserveFormatting: true,
             })
         } else if (greetingCount === 1) {
             await state.update({ greetingCount: 2, menuActive: true })
