@@ -139,6 +139,16 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
                 preserveFormatting: true,
             })
 
+            await sendChunkedMessages(
+                flowDynamic,
+                'Si necesitas otra sección, responde con su número o escribe «menu» para volver a verla.',
+                {
+                    ctx,
+                    provider,
+                    preserveFormatting: true,
+                }
+            )
+
             return
         }
     }
