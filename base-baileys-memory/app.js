@@ -48,6 +48,7 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     const isFromAgent = Boolean(ctx?.key?.fromMe)
     const userState = state.getMyState() || {}
     const agentChatActive = Boolean(userState.agentChatActive)
+    const menuActive = Boolean(userState.menuActive)
     const greetingCount = Number(userState.greetingCount || 0)
 
     if (isFromAgent) {
@@ -75,6 +76,10 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     if (isGreeting(message)) {
         if (agentChatActive) {
             return
+        }
+
+        if (menuActive) {
+            await state.update({ menuActive: false })
         }
 
         if (greetingCount === 0) {
@@ -112,6 +117,27 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             preserveFormatting: true,
         })
         return
+    }
+
+    const menuSelection = parseMenuOptionSelection(message)
+    if (menuSelection) {
+        if (agentChatActive) {
+            return
+        }
+
+        if (menuActive) {
+            const optionResponse = getMenuOptionResponse(menuSelection)
+            if (optionResponse) {
+                await state.update({ menuActive: false })
+                await sendChunkedMessages(flowDynamic, optionResponse, {
+                    ctx,
+                    provider,
+                    preserveFormatting: true,
+                })
+            }
+
+            return
+        }
     }
 
     if (isAgentEscalationRequest(message)) {
