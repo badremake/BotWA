@@ -25,7 +25,8 @@ const QRPortalWeb = require('@bot-whatsapp/portal')
 const BaileysProvider = require('@bot-whatsapp/provider/baileys')
 const MockAdapter = require('@bot-whatsapp/database/mock')
 
-const { buildMenuMessages, isMenuRequest } = require('./services/menu')
+const menuService = require('./services/menu')
+const { buildMenuMessages, getMenuOptionResponse, isMenuRequest } = menuService
 const {
     buildAgentEscalationMessage,
     isAgentEscalationRequest,
@@ -119,7 +120,7 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         return
     }
 
-    const menuSelection = parseMenuOptionSelection(message)
+    const menuSelection = menuService.parseMenuOptionSelection(message)
     if (menuSelection) {
         if (agentChatActive) {
             return
