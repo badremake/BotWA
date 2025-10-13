@@ -35,6 +35,13 @@ const MONTH_NAMES = [
 
 const padNumber = (value) => String(value).padStart(2, '0')
 
+const normalizeText = (text = '') =>
+    String(text)
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLowerCase()
+        .trim()
+
 const parseDateParts = (date) => {
     const [year, month, day] = date.split('-').map(Number)
     if ([year, month, day].some((value) => Number.isNaN(value))) return null
@@ -985,6 +992,19 @@ const isValidTimeZone = (timeZone) => {
 const START_KEYWORDS = [
     /agendar\s+(una\s+)?(cita|llamada)/i,
     /reservar\s+(una\s+)?(cita|llamada)/i,
+]
+
+const FALLBACK_START_KEYWORDS = [
+    'agendar',
+    'agendar cita',
+    'agendar una cita',
+    'agendar llamada',
+    'agendar una llamada',
+    'reservar',
+    'reservar cita',
+    'reservar una cita',
+    'reservar llamada',
+    'reservar una llamada',
 ]
 
 const BUSINESS_START_HOUR = 9
@@ -2028,11 +2048,32 @@ const handleSchedulingFlow = async (ctx, tools) => {
         return continueSchedulingFlow(ctx, tools, scheduling)
     }
 
-    if (START_KEYWORDS.some((regex) => regex.test(message))) {
+    if (isSchedulingStartRequest(message)) {
         return startSchedulingFlow(ctx, tools)
     }
 
     return false
+}
+
+const isSchedulingStartRequest = (message) => {
+    if (!message) return false
+
+    if (START_KEYWORDS.some((regex) => regex.test(message))) {
+        return true
+    }
+
+    const normalizedMessage = normalizeText(message)
+    if (!normalizedMessage) return false
+
+    const configuredKeywords = Array.isArray(businessInfo?.schedulingKeywords)
+        ? businessInfo.schedulingKeywords
+        : []
+
+    const normalizedKeywords = [...FALLBACK_START_KEYWORDS, ...configuredKeywords]
+        .map((keyword) => normalizeText(keyword))
+        .filter(Boolean)
+
+    return normalizedKeywords.some((keyword) => normalizedMessage.includes(keyword))
 }
 
 module.exports = {
