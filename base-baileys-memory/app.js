@@ -25,7 +25,9 @@ const QRPortalWeb = require('@bot-whatsapp/portal')
 const BaileysProvider = require('@bot-whatsapp/provider/baileys')
 const MockAdapter = require('@bot-whatsapp/database/mock')
 
-const { buildMenuMessages, getMenuOptionResponse, isMenuRequest, parseMenuOptionSelection } = require('./services/menu')
+const { getGeminiReply } = require('./services/gemini')
+const { contextMessages } = require('./services/context')
+const { buildMenuMessages, isMenuRequest } = require('./services/menu')
 const {
     buildAgentEscalationMessage,
     isAgentEscalationRequest,
@@ -39,7 +41,6 @@ const {
     buildRepeatedGreetingMessages,
     isGreeting,
 } = require('./services/greetings')
-const { getCommandResponse } = require('./services/command-responses')
 
 const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynamic, state, provider }) => {
     const message = ctx?.body?.trim()
@@ -48,7 +49,6 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     const isFromAgent = Boolean(ctx?.key?.fromMe)
     const userState = state.getMyState() || {}
     const agentChatActive = Boolean(userState.agentChatActive)
-    const menuActive = Boolean(userState.menuActive)
     const greetingCount = Number(userState.greetingCount || 0)
 
     if (isFromAgent) {
@@ -76,10 +76,6 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     if (isGreeting(message)) {
         if (agentChatActive) {
             return
-        }
-
-        if (menuActive) {
-            await state.update({ menuActive: false })
         }
 
         if (greetingCount === 0) {
@@ -110,34 +106,12 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         if (agentChatActive) {
             await state.update({ agentChatActive: false })
         }
-        await state.update({ menuActive: true })
         await sendChunkedMessages(flowDynamic, buildMenuMessages(), {
             ctx,
             provider,
             preserveFormatting: true,
         })
         return
-    }
-
-    const menuSelection = parseMenuOptionSelection(message)
-    if (menuSelection) {
-        if (agentChatActive) {
-            return
-        }
-
-        if (menuActive) {
-            const optionResponse = getMenuOptionResponse(menuSelection)
-            if (optionResponse) {
-                await state.update({ menuActive: false })
-                await sendChunkedMessages(flowDynamic, optionResponse, {
-                    ctx,
-                    provider,
-                    preserveFormatting: true,
-                })
-            }
-
-            return
-        }
     }
 
     if (isAgentEscalationRequest(message)) {
@@ -156,27 +130,78 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     }
 
     if (await handleSchedulingFlow(ctx, { flowDynamic, state, provider })) {
-        if (menuActive) {
-            await state.update({ menuActive: false })
+        return
+    }
+
+    try {
+        const userState = state.getMyState() || {}
+        const history = Array.isArray(userState?.geminiHistory) ? userState.geminiHistory : []
+        const { reply, history: updatedHistory } = await getGeminiReply(message, history, contextMessages)
+        await state.update({ geminiHistory: updatedHistory })
+        await sendChunkedMessages(flowDynamic, reply, { ctx, provider })
+    } catch (error) {
+        console.error('Gemini API error:', error)
+
+        if (error.message === 'GEMINI_API_KEY_MISSING') {
+            await sendChunkedMessages(
+                flowDynamic,
+                '⚠️ La clave de la API de Gemini no está configurada. Configura GEMINI_API_KEY en tu entorno y reinicia el bot.',
+                { ctx, provider }
+            )
+            return
         }
-        return
-    }
 
-    if (menuActive) {
-        await state.update({ menuActive: false })
-    }
+        if (error.message === 'GEMINI_FETCH_FAILED') {
+            await sendChunkedMessages(
+                flowDynamic,
+                '⚠️ No pude comunicarme con el servicio de Gemini. Revisa tu conexión a internet y vuelve a intentarlo.',
+                { ctx, provider }
+            )
+            return
+        }
 
-    const commandResponse = getCommandResponse(message)
-    if (commandResponse) {
-        await sendChunkedMessages(flowDynamic, commandResponse.messages, { ctx, provider })
-        return
-    }
+        if (error.message === 'GEMINI_EMPTY_RESPONSE') {
+            await sendChunkedMessages(
+                flowDynamic,
+                '⚠️ No recibí ninguna respuesta de Gemini. Por favor intenta reformular tu mensaje.',
+                { ctx, provider }
+            )
+            return
+        }
 
-    await sendChunkedMessages(
-        flowDynamic,
-        'No reconocí ese comando. Escribe "menu" para ver las opciones disponibles o "Agendar cita" si deseas reservar una llamada.',
-        { ctx, provider }
-    )
+        if (error.code === 401 || error.code === 403) {
+            await sendChunkedMessages(
+                flowDynamic,
+                '⚠️ Gemini rechazó la solicitud. Verifica tu GEMINI_API_KEY y que la cuenta tenga acceso al modelo configurado.',
+                { ctx, provider }
+            )
+            return
+        }
+
+        if (error.code === 429) {
+            await sendChunkedMessages(
+                flowDynamic,
+                '⚠️ Se alcanzó el límite de solicitudes de Gemini. Espera unos minutos antes de intentarlo de nuevo.',
+                { ctx, provider }
+            )
+            return
+        }
+
+        if (error.message) {
+            await sendChunkedMessages(
+                flowDynamic,
+                `⚠️ Gemini respondió con un error: ${error.message}`,
+                { ctx, provider }
+            )
+            return
+        }
+
+        await sendChunkedMessages(
+            flowDynamic,
+            '😔 Ocurrió un error al generar la respuesta. Intenta nuevamente en unos instantes.',
+            { ctx, provider }
+        )
+    }
 })
 
 const main = async () => {
