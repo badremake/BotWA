@@ -19,11 +19,13 @@ const isGreeting = (message = '') => {
 const buildInitialGreetingMessages = () => {
     const menuMessages = buildMenuMessages()
 
-    return [
+    const openingMessage = [
         '¡Hola! Soy el asistente virtual del Consejo de Enfermería.',
-        'Estoy aquí para acompañarte en tu proceso de homologación. Cuéntame, ¿en qué puedo ayudarte?',
-        ...menuMessages,
-    ]
+        'Estoy aquí para acompañarte en tu proceso de homologación.',
+        'Te comparto nuestro menú para que elijas la opción que necesites:',
+    ].join('\n')
+
+    return [openingMessage, ...menuMessages]
 }
 
 const buildRepeatedGreetingMessages = () => buildMenuMessages()
