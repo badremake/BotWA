@@ -56,6 +56,14 @@ const menuOptionResponses = {
 
 const MENU_KEYWORDS = ['menu', 'menú']
 
+const MENU_OPTION_KEYWORDS = {
+    1: ['información general', 'informacion general', 'info general', 'informacion del programa'],
+    2: ['requisitos y pasos', 'requisitos del programa', 'pasos para homologacion', 'pasos para homologación'],
+    3: ['beneficios del programa', 'beneficios programa', 'beneficios de la homologacion'],
+    4: ['costos y financiamiento', 'costos del programa', 'opciones de financiamiento'],
+    5: ['agendar una llamada', 'agendar llamada', 'agendar cita', 'reservar una llamada'],
+}
+
 const stripDiacritics = (text) =>
     String(text ?? '')
         .normalize('NFD')
@@ -124,6 +132,21 @@ const parseMenuOptionSelection = (message = '') => {
     const match = normalized.match(/^opciones?\s*([1-5])[^\p{L}\d]*$/u)
     if (match) {
         return Number(match[1])
+    }
+
+    for (const [option, keywords] of Object.entries(MENU_OPTION_KEYWORDS)) {
+        if (!Array.isArray(keywords)) continue
+
+        const hasKeyword = keywords.some((keyword) => {
+            const normalizedKeyword = stripDiacritics(keyword)
+            if (!normalizedKeyword) return false
+            const pattern = new RegExp(`\\b${escapeRegExp(normalizedKeyword)}\\b`, 'u')
+            return pattern.test(normalized)
+        })
+
+        if (hasKeyword) {
+            return Number(option)
+        }
     }
 
     return null
