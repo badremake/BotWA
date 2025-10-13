@@ -25,7 +25,7 @@ const QRPortalWeb = require('@bot-whatsapp/portal')
 const BaileysProvider = require('@bot-whatsapp/provider/baileys')
 const MockAdapter = require('@bot-whatsapp/database/mock')
 
-const { buildMenuMessages, isMenuRequest } = require('./services/menu')
+const { buildMenuMessages, getMenuOptionResponse, isMenuRequest, parseMenuOptionSelection } = require('./services/menu')
 const {
     buildAgentEscalationMessage,
     isAgentEscalationRequest,
@@ -83,15 +83,15 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         }
 
         if (greetingCount === 0) {
-            await state.update({ greetingCount: 1, menuActive: true })
+            await state.update({ greetingCount: 1 })
             await sendChunkedMessages(flowDynamic, buildInitialGreetingMessages(), {
                 ctx,
                 provider,
             })
         } else if (greetingCount === 1) {
-            await state.update({ greetingCount: 2, menuActive: true })
+            await state.update({ greetingCount: 2 })
         } else {
-            await state.update({ greetingCount: greetingCount + 1, menuActive: true })
+            await state.update({ greetingCount: greetingCount + 1 })
             await sendChunkedMessages(flowDynamic, buildRepeatedGreetingMessages(), {
                 ctx,
                 provider,
@@ -141,7 +141,9 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     }
 
     if (isAgentEscalationRequest(message)) {
-        await state.update({ agentChatActive: true, menuActive: false })
+        if (!agentChatActive) {
+            await state.update({ agentChatActive: true })
+        }
         await sendChunkedMessages(flowDynamic, buildAgentEscalationMessage(), {
             ctx,
             provider,
@@ -154,41 +156,25 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     }
 
     if (await handleSchedulingFlow(ctx, { flowDynamic, state, provider })) {
-        const latestState = state.getMyState() || {}
-        if (latestState.menuActive) {
+        if (menuActive) {
             await state.update({ menuActive: false })
         }
         return
     }
 
-    const latestState = state.getMyState() || {}
-    const commandResult = getCommandResponse(message, { menuActive: Boolean(latestState.menuActive) })
-
-    if (commandResult) {
-        const { messages, keepMenuOpen = false } = commandResult
-        await sendChunkedMessages(flowDynamic, messages, {
-            ctx,
-            provider,
-            preserveFormatting: true,
-        })
-
-        if (Boolean(latestState.menuActive) !== keepMenuOpen) {
-            await state.update({ menuActive: keepMenuOpen })
-        }
-
-        return
+    if (menuActive) {
+        await state.update({ menuActive: false })
     }
 
-    if (latestState.menuActive) {
-        await state.update({ menuActive: false })
+    const commandResponse = getCommandResponse(message)
+    if (commandResponse) {
+        await sendChunkedMessages(flowDynamic, commandResponse.messages, { ctx, provider })
+        return
     }
 
     await sendChunkedMessages(
         flowDynamic,
-        [
-            'Aún no tengo una respuesta programada para ese tema.',
-            'Escribe "menu" para ver las opciones disponibles o "Agendar cita" si deseas que revisemos horarios para una llamada.',
-        ],
+        'No reconocí ese comando. Escribe "menu" para ver las opciones disponibles o "Agendar cita" si deseas reservar una llamada.',
         { ctx, provider }
     )
 })
