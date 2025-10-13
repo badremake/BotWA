@@ -127,16 +127,27 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             return
         }
 
-        if (menuActive) {
-            const optionResponse = getMenuOptionResponse(menuSelection)
-            if (optionResponse) {
-                await state.update({ menuActive: false })
-                await sendChunkedMessages(flowDynamic, optionResponse, {
+        const optionResponse = getMenuOptionResponse(menuSelection)
+        if (optionResponse) {
+            if (!menuActive) {
+                await state.update({ menuActive: true })
+            }
+
+            await sendChunkedMessages(flowDynamic, optionResponse, {
+                ctx,
+                provider,
+                preserveFormatting: true,
+            })
+
+            await sendChunkedMessages(
+                flowDynamic,
+                'Si necesitas otra sección, responde con su número o escribe «menu» para volver a verla.',
+                {
                     ctx,
                     provider,
                     preserveFormatting: true,
-                })
-            }
+                }
+            )
 
             return
         }
