@@ -127,16 +127,17 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
             return
         }
 
-        if (menuActive) {
-            const optionResponse = getMenuOptionResponse(menuSelection)
-            if (optionResponse) {
-                await state.update({ menuActive: false })
-                await sendChunkedMessages(flowDynamic, optionResponse, {
-                    ctx,
-                    provider,
-                    preserveFormatting: true,
-                })
+        const optionResponse = getMenuOptionResponse(menuSelection)
+        if (optionResponse) {
+            if (!menuActive) {
+                await state.update({ menuActive: true })
             }
+
+            await sendChunkedMessages(flowDynamic, optionResponse, {
+                ctx,
+                provider,
+                preserveFormatting: true,
+            })
 
             return
         }
