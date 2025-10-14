@@ -588,21 +588,12 @@ const sendDateSpecificAvailability = async (ctx, tools, { dateParts, timeZone })
         return true
     }
 
-    const slots = await findAvailableSlots({
-        startDate: dayStart,
-        maxSlots: MAX_SUGGESTION_SLOTS,
-        slotMinutes: SUGGESTION_SLOT_MINUTES,
+    const availableSlots = await getAvailabilityForDate(dateParts, {
         timeZone,
+        maxSlots: MAX_SUGGESTION_SLOTS,
     })
 
-    const sameDaySlots = slots.filter(
-        (slot) =>
-            slot.dateParts.year === dateParts.year &&
-            slot.dateParts.month === dateParts.month &&
-            slot.dateParts.day === dateParts.day
-    )
-
-    if (!sameDaySlots.length) {
+    if (!availableSlots.length) {
         await clearAvailabilitySuggestions(state)
         await sendChunkedMessages(
             flowDynamic,
@@ -614,7 +605,7 @@ const sendDateSpecificAvailability = async (ctx, tools, { dateParts, timeZone })
         return true
     }
 
-    const message = buildDateSpecificAvailabilityMessage(sameDaySlots, dateParts, timeZone)
+    const message = buildDateSpecificAvailabilityMessage(availableSlots, dateParts, timeZone)
 
     await sendChunkedMessages(flowDynamic, message, {
         ctx,
@@ -622,7 +613,7 @@ const sendDateSpecificAvailability = async (ctx, tools, { dateParts, timeZone })
         preserveFormatting: true,
     })
 
-    const lastSlot = sameDaySlots[sameDaySlots.length - 1]
+    const lastSlot = availableSlots[availableSlots.length - 1]
 
     await state.update({
         availabilitySuggestions: {
@@ -1364,13 +1355,13 @@ const parseFlexibleTimeInput = (input) => {
 
     if (!mentionsAfternoon && !mentionsMorning && hour <= 12) {
         if (hour < BUSINESS_START_HOUR && hour !== 0) {
-            const suggestedHour = hour + 12 <= 23 ? hour + 12 : hour
-            return {
-                status: 'clarify',
-                suggestion: {
-                    hour: suggestedHour,
-                    minute,
-                },
+            const candidateHour = hour + 12
+            if (
+                candidateHour >= BUSINESS_START_HOUR &&
+                candidateHour <= BUSINESS_END_HOUR &&
+                candidateHour <= 23
+            ) {
+                hour = candidateHour
             }
         }
     }
