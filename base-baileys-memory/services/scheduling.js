@@ -35,12 +35,33 @@ const MONTH_NAMES = [
 
 const padNumber = (value) => String(value).padStart(2, '0')
 
-const normalizeText = (text = '') =>
+const removeDiacritics = (text = '') =>
     String(text)
         .normalize('NFD')
         .replace(/\p{Diacritic}/gu, '')
-        .toLowerCase()
-        .trim()
+
+const normalizeText = (text = '') => removeDiacritics(text).toLowerCase().trim()
+
+const MONTH_NAMES_NO_ACCENTS = MONTH_NAMES.map((name) =>
+    removeDiacritics(name).toLowerCase()
+)
+
+const WEEKDAY_NAMES = [
+    'domingo',
+    'lunes',
+    'martes',
+    'miercoles',
+    'jueves',
+    'viernes',
+    'sabado',
+]
+
+const WEEKDAY_NAME_TO_INDEX = WEEKDAY_NAMES.reduce((acc, name, index) => {
+    acc[name] = index
+    return acc
+}, {})
+
+const WEEKDAY_REGEX = new RegExp(`\\b(${WEEKDAY_NAMES.join('|')})\\b`, 'u')
 
 const parseDateParts = (date) => {
     const [year, month, day] = date.split('-').map(Number)
@@ -1129,21 +1150,69 @@ const buildDateFromOffset = (referenceDate, offsetDays) => {
 }
 
 const parseRelativeDate = (normalizedInput, referenceDate) => {
-    if (/pasado\s*mañana/.test(normalizedInput)) {
+    const sanitized = removeDiacritics(normalizedInput).toLowerCase()
+
+    if (/pasado\s*manana/.test(sanitized)) {
         return buildDateFromOffset(referenceDate, 2)
     }
 
-    if (/mañana/.test(normalizedInput)) {
+    if (/manana/.test(sanitized)) {
         return buildDateFromOffset(referenceDate, 1)
     }
 
-    if (/(hoy|el\s+d[ií]a\s+de\s+hoy)/.test(normalizedInput)) {
+    if (/(hoy|el\s+dia\s+de\s+hoy)/.test(sanitized)) {
         return buildDateFromOffset(referenceDate, 0)
     }
 
-    const inDaysMatch = normalizedInput.match(/en\s+(\d{1,2})\s+d[ií]as?/)
+    const inDaysMatch = sanitized.match(/en\s+(\d{1,2})\s+dias?/)
     if (inDaysMatch) {
         return buildDateFromOffset(referenceDate, Number(inDaysMatch[1]))
+    }
+
+    if (/\bpasad[oa]\b/.test(sanitized) && !/pasado\s*manana/.test(sanitized)) {
+        return null
+    }
+
+    const containsMonthName = MONTH_NAMES_NO_ACCENTS.some((month) =>
+        sanitized.includes(month)
+    )
+    const containsNumericDate =
+        /\d{4}[\/-]\d{1,2}[\/-]\d{1,2}/.test(normalizedInput) ||
+        /\d{1,2}[\/-]\d{1,2}/.test(normalizedInput)
+
+    if (containsMonthName || containsNumericDate) {
+        return null
+    }
+
+    const weekdayMatch = WEEKDAY_REGEX.exec(sanitized)
+    if (weekdayMatch) {
+        const weekdayName = weekdayMatch[1]
+        const targetWeekday = WEEKDAY_NAME_TO_INDEX[weekdayName]
+        if (typeof targetWeekday !== 'number') {
+            return null
+        }
+
+        const contextStart = Math.max(0, weekdayMatch.index - 20)
+        const contextEnd = Math.min(
+            sanitized.length,
+            weekdayMatch.index + weekdayMatch[0].length + 20
+        )
+        const context = sanitized.slice(contextStart, contextEnd)
+
+        const mentionsNext =
+            /\bproxim[oa]\b/.test(context) || /\bque\s+viene\b/.test(context)
+        const mentionsThis = /\beste\b/.test(context)
+
+        const referenceWeekday = referenceDate.getUTCDay()
+        let offset = (targetWeekday - referenceWeekday + 7) % 7
+
+        if (mentionsNext) {
+            offset = offset === 0 ? 7 : offset + 7
+        } else if (offset === 0 && !mentionsThis) {
+            // Keep offset at 0 to allow selecting the same weekday when appropriate.
+        }
+
+        return buildDateFromOffset(referenceDate, offset)
     }
 
     return null
