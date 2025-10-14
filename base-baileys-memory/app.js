@@ -121,6 +121,17 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         return
     }
 
+    if (
+        !agentChatActive &&
+        (await handleSchedulingFlow(ctx, { flowDynamic, state, provider }))
+    ) {
+        const latestState = state.getMyState() || {}
+        if (latestState.menuActive) {
+            await state.update({ menuActive: false })
+        }
+        return
+    }
+
     const menuSelection = menuService.parseMenuOptionSelection(message)
     if (menuSelection) {
         if (agentChatActive) {
@@ -163,14 +174,6 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
     }
 
     if (agentChatActive) {
-        return
-    }
-
-    if (await handleSchedulingFlow(ctx, { flowDynamic, state, provider })) {
-        const latestState = state.getMyState() || {}
-        if (latestState.menuActive) {
-            await state.update({ menuActive: false })
-        }
         return
     }
 
