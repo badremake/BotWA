@@ -1627,6 +1627,211 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             const normalizedDate = `${parsedDate.year}-${padNumber(parsedDate.month)}-${padNumber(
                 parsedDate.day
             )}`
+            const formattedDate = formatDateForHumans(parsedDate)
+            const includesTimeReference = hasExplicitTimeReference(message)
+
+            if (includesTimeReference) {
+                if (!isCalendarConfigured()) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'Aún no tengo acceso a la agenda para consultar los horarios disponibles. Solicita al equipo técnico que complete la configuración de Google Calendar.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                const parsedTime = parseFlexibleTimeInput(message)
+
+                if (parsedTime.status === 'invalid') {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'No logré interpretar la hora. Dime algo como “11:30”, “1 pm” o “13 horas”.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                if (parsedTime.status === 'clarify') {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        `¿Te refieres a las ${formatTimeForHumans(parsedTime.suggestion)}? Nuestro horario de atención es de 09:00 a 15:00. Elige un horario dentro de ese rango, por favor.`,
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                if (parsedTime.status === 'out_of_range') {
+                    const attemptedTime = {
+                        hour: parsedTime.hour,
+                        minute: parsedTime.minute,
+                    }
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        `El horario ${formatTimeForHumans(attemptedTime)} queda fuera de nuestro servicio. Podemos atenderte entre 09:00 y 15:00. Indícame otra hora dentro de ese rango.`,
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                const timeParts = {
+                    hour: parsedTime.hour,
+                    minute: parsedTime.minute,
+                }
+                const timeString = `${padNumber(timeParts.hour)}:${padNumber(timeParts.minute)}`
+                const timeLabel = formatTimeForHumans(timeParts)
+
+                const timezoneMatch = message.match(/GMT[+-]\d{1,2}|UTC[+-]\d{1,2}|[A-Za-z]+\/[A-Za-z_]+/)
+                const normalizedZoneInput = normalizeTimeZoneInput(
+                    timezoneMatch ? timezoneMatch[0] : scheduling?.data?.timeZone
+                )
+                const timeZone = normalizedZoneInput || scheduling?.data?.timeZone || DEFAULT_TIMEZONE
+
+                if (!isValidTimeZone(timeZone)) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'No reconocí esa zona horaria. Puedes indicarme una zona en formato “America/Mexico_City” o “UTC-5”.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                const startDate = buildZonedDate(parsedDate, timeParts, timeZone)
+                if (!startDate) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'No logré interpretar la combinación de fecha, hora y zona horaria. Intentemos nuevamente, por favor.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                if (isWeekendInTimeZone(startDate, timeZone)) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'Los sábados y domingos no ofrecemos atención en tiempo real ni llamadas. Elige un día entre lunes y viernes.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                const now = new Date()
+                if (startDate.getTime() - now.getTime() < noticeInMilliseconds) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'Necesitamos al menos 1 hora de anticipación para agendar. Te comparto otras opciones para ese día.',
+                        { ctx, provider }
+                    )
+                    await sendDateSpecificAvailability(ctx, tools, { dateParts: parsedDate, timeZone })
+                    return true
+                }
+
+                const endInfo = addMinutesToDateTime(
+                    parsedDate,
+                    timeParts,
+                    DEFAULT_APPOINTMENT_DURATION_MINUTES
+                )
+                const endDate = buildZonedDate(endInfo.dateParts, endInfo.timeParts, timeZone)
+
+                if (!endDate) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'No logré interpretar la hora de término para ese horario. Intenta con otra opción, por favor.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                try {
+                    const conflict = await hasConflictingEvent({ startDate, endDate })
+                    if (conflict) {
+                        const slots = await getAvailabilityForDate(parsedDate, { timeZone })
+
+                        if (!slots.length) {
+                            await clearAvailabilitySuggestions(state)
+                            await sendChunkedMessages(
+                                flowDynamic,
+                                `Por ahora no tengo horarios disponibles el ${formattedDate}. Indícame otra fecha de lunes a viernes y reviso nuevamente.`,
+                                { ctx, provider }
+                            )
+
+                            const { date: _unusedDate, ...restData } = scheduling.data || {}
+
+                            await state.update({
+                                scheduling: {
+                                    ...scheduling,
+                                    step: 'collectDate',
+                                    data: {
+                                        ...restData,
+                                    },
+                                },
+                            })
+
+                            return true
+                        }
+
+                        const { time: _unusedTime, ...restData } = scheduling.data || {}
+
+                        await state.update({
+                            scheduling: {
+                                ...scheduling,
+                                step: 'collectTime',
+                                data: {
+                                    ...restData,
+                                    date: normalizedDate,
+                                    timeZone,
+                                },
+                            },
+                        })
+
+                        await sendChunkedMessages(
+                            flowDynamic,
+                            `El horario de las ${timeLabel} ya está ocupado, pero el ${formattedDate} tengo estas opciones disponibles:`,
+                            { ctx, provider }
+                        )
+
+                        await presentAvailabilitySlots(ctx, tools, slots, {
+                            intro: `El ${formattedDate} tengo estos horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${timeZone}):`,
+                            closing: 'Dime cuál te funciona o indícame otra fecha para revisar nuevas opciones.',
+                        })
+
+                        return true
+                    }
+                } catch (error) {
+                    console.error('Error al verificar disponibilidad del calendario:', error)
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'No logré verificar la disponibilidad de ese horario. Intenta con otra hora o vuelve a intentarlo en unos minutos.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                await clearAvailabilitySuggestions(state)
+
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'confirmSlot',
+                        data: {
+                            ...scheduling.data,
+                            date: normalizedDate,
+                            time: timeString,
+                            timeZone,
+                        },
+                    },
+                })
+
+                await sendChunkedMessages(
+                    flowDynamic,
+                    [
+                        `Claro, el ${formattedDate} a las ${timeLabel} (${timeZone}) está disponible.`,
+                        '¿Quieres que lo agendemos? Responde “Sí” para continuar o dime otro horario que prefieras.',
+                    ],
+                    { ctx, provider }
+                )
+
+                return true
+            }
 
             const slots = await getAvailabilityForDate(parsedDate)
 
@@ -1634,7 +1839,7 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 await clearAvailabilitySuggestions(state)
                 await sendChunkedMessages(
                     flowDynamic,
-                    `Por ahora no tengo horarios disponibles el ${formatDateForHumans(parsedDate)}. Indícame otra fecha de lunes a viernes y reviso nuevamente.`,
+                    `Por ahora no tengo horarios disponibles el ${formattedDate}. Indícame otra fecha de lunes a viernes y reviso nuevamente.`,
                     { ctx, provider }
                 )
 
@@ -1664,14 +1869,14 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             })
 
             await presentAvailabilitySlots(ctx, tools, slots, {
-                intro: `Para ${formatDateForHumans(parsedDate)} tengo estos horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${DEFAULT_TIMEZONE}):`,
+                intro: `Para ${formattedDate} tengo estos horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${DEFAULT_TIMEZONE}):`,
                 closing:
                     'Si alguno de esos horarios te funciona, dime y avanzamos con la confirmación. Para ver más opciones responde "mostrar más horarios".',
             })
 
             await sendChunkedMessages(
                 flowDynamic,
-                `Tomé nota para el ${formatDateForHumans(parsedDate)}. ¿Cuál de esos horarios prefieres? Puedes decir “1 pm”, “13:30” o “mediodía”. Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo.`,
+                `Tomé nota para el ${formattedDate}. ¿Cuál de esos horarios prefieres? Puedes decir “1 pm”, “13:30” o “mediodía”. Si necesitas otra zona horaria distinta a ${DEFAULT_TIMEZONE}, menciónalo.`,
                 { ctx, provider }
             )
 
@@ -1998,6 +2203,185 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 '¿Hay algo adicional que debamos tener en cuenta para la llamada? Puedes escribir "No" si no es necesario.',
                 { ctx, provider }
             )
+
+            return true
+        }
+        case 'confirmSlot': {
+            if (matchesDateChangeRequest(message)) {
+                const { time: _previousTime, ...restData } = scheduling.data || {}
+
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectDate',
+                        data: {
+                            ...restData,
+                        },
+                    },
+                })
+
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Claro, dime la nueva fecha que te interesa. Recuerda que atendemos de lunes a viernes.',
+                    { ctx, provider }
+                )
+
+                return true
+            }
+
+            const wantsNewSelection =
+                hasExplicitTimeReference(message) ||
+                Boolean(parseFlexibleDateInput(message, new Date()))
+
+            if (wantsNewSelection) {
+                const dataWithoutTime = { ...(scheduling.data || {}) }
+                delete dataWithoutTime.time
+
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectTime',
+                        data: dataWithoutTime,
+                    },
+                })
+
+                return continueSchedulingFlow(ctx, tools, {
+                    ...scheduling,
+                    step: 'collectTime',
+                    data: dataWithoutTime,
+                })
+            }
+
+            const normalizedResponse = normalizeText(message)
+            const dateParts = parseDateParts(scheduling.data?.date || '')
+            const timeParts = scheduling.data?.time ? parseTimeParts(scheduling.data.time) : null
+            const timeZone = scheduling.data?.timeZone || DEFAULT_TIMEZONE
+            const formattedDate = dateParts ? formatDateForHumans(dateParts) : null
+            const formattedTime = timeParts ? formatTimeForHumans(timeParts) : null
+
+            if (
+                normalizedResponse &&
+                /^(si|claro|correcto|confirm(o|ar)?|agend(ar|a)?|agenda|dale|va|perfecto|ok|okay|de acuerdo|por supuesto)/.test(
+                    normalizedResponse
+                )
+            ) {
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectNotes',
+                        data: {
+                            ...scheduling.data,
+                        },
+                    },
+                })
+
+                await sendChunkedMessages(
+                    flowDynamic,
+                    '¿Hay algo adicional que debamos tener en cuenta para la llamada? Puedes escribir "No" si no es necesario.',
+                    { ctx, provider }
+                )
+
+                return true
+            }
+
+            if (
+                normalizedResponse &&
+                /^(no|otra|prefiero|cambiar|mejor|busco|otro|ninguno)/.test(normalizedResponse)
+            ) {
+                const dataWithoutTime = { ...(scheduling.data || {}) }
+                delete dataWithoutTime.time
+
+                if (!dateParts) {
+                    await state.update({
+                        scheduling: {
+                            ...scheduling,
+                            step: 'collectDate',
+                            data: {
+                                ...dataWithoutTime,
+                            },
+                        },
+                    })
+
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'De acuerdo, dime qué fecha te interesa revisar. Recuerda que agendamos de lunes a viernes.',
+                        { ctx, provider }
+                    )
+
+                    return true
+                }
+
+                if (!isCalendarConfigured()) {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'Aún no tengo acceso a la agenda para consultar los horarios disponibles. Solicita al equipo técnico que complete la configuración de Google Calendar.',
+                        { ctx, provider }
+                    )
+                    return true
+                }
+
+                const slots = await getAvailabilityForDate(dateParts, { timeZone })
+
+                if (!slots.length) {
+                    await clearAvailabilitySuggestions(state)
+                    await state.update({
+                        scheduling: {
+                            ...scheduling,
+                            step: 'collectDate',
+                            data: {
+                                ...dataWithoutTime,
+                            },
+                        },
+                    })
+
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        `Por ahora no tengo horarios disponibles el ${formattedDate}. Indícame otra fecha de lunes a viernes y reviso nuevamente.`,
+                        { ctx, provider }
+                    )
+
+                    return true
+                }
+
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectTime',
+                        data: {
+                            ...dataWithoutTime,
+                            date: scheduling.data?.date,
+                            timeZone,
+                        },
+                    },
+                })
+
+                await sendChunkedMessages(
+                    flowDynamic,
+                    `De acuerdo, revisemos otros horarios para el ${formattedDate}.`,
+                    { ctx, provider }
+                )
+
+                await presentAvailabilitySlots(ctx, tools, slots, {
+                    intro: `El ${formattedDate} tengo estos horarios disponibles de ${SUGGESTION_SLOT_MINUTES} minutos (hora local de ${timeZone}):`,
+                    closing: 'Dime cuál te funciona o indícame otra fecha para revisar nuevas opciones.',
+                })
+
+                return true
+            }
+
+            const reminderMessages = []
+            if (formattedDate && formattedTime) {
+                reminderMessages.push(
+                    `Solo necesito saber si confirmamos el ${formattedDate} a las ${formattedTime} (${timeZone}).`
+                )
+            } else {
+                reminderMessages.push('Solo necesito saber si confirmamos el horario que acabamos de revisar.')
+            }
+            reminderMessages.push(
+                'Responde “Sí” para agendarlo o dime otro horario si prefieres cambiarlo.'
+            )
+
+            await sendChunkedMessages(flowDynamic, reminderMessages, { ctx, provider })
 
             return true
         }
