@@ -195,18 +195,24 @@ const flowGemini = addKeyword(EVENTS.WELCOME).addAction(async (ctx, { flowDynami
         return
     }
 
-    if (latestState.menuActive) {
-        await state.update({ menuActive: false })
+    if (!latestState.menuActive) {
+        await state.update({ menuActive: true })
     }
 
     await sendChunkedMessages(
         flowDynamic,
         [
             'Aún no tengo una respuesta programada para ese tema.',
-            'Escribe "menu" para ver las opciones disponibles o "Agendar cita" si deseas que revisemos horarios para una llamada.',
+            'Elige una de las opciones disponibles para continuar:',
         ],
         { ctx, provider }
     )
+
+    await sendChunkedMessages(flowDynamic, buildMenuMessages(), {
+        ctx,
+        provider,
+        preserveFormatting: true,
+    })
 })
 
 const main = async () => {
