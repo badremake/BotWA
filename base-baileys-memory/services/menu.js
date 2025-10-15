@@ -3,25 +3,25 @@ const menuSections = [
         emoji: '1️⃣',
         title: 'Información general',
         description:
-            'Presenta una visión general del programa de homologación, explicando a quién está dirigido y cuáles son sus objetivos principales.',
+            'Presenta una visión general del programa de homologación, explicando a quién está dirigido, los plazos estimados y cómo te guiamos hasta lograr tu licencia de RN.',
     },
     {
         emoji: '2️⃣',
         title: 'Requisitos y pasos',
         description:
-            'Resume los documentos esenciales para homologar la carrera y aclara que, si algo falta, el asesor guiará a la persona.',
+            'Resume los documentos esenciales y detalla cómo los enviamos en dos etapas (escuela y Board of Nursing), aclarando que, si algo falta, el asesor lo gestiona contigo.',
     },
     {
         emoji: '3️⃣',
         title: 'Beneficios del programa',
         description:
-            'Destaca el acompañamiento personalizado, los simulacros de examen y el apoyo para trámites migratorios y colocación laboral.',
+            'Destaca el acompañamiento personalizado, los simulacros del NCLEX-RN, las mentorías clínicas y el apoyo para trámites migratorios y colocación laboral.',
     },
     {
         emoji: '4️⃣',
         title: 'Costos y financiamiento',
         description:
-            'Invita a conversar sobre inversiones, becas y opciones de pago flexibles durante la llamada de orientación.',
+            'Invita a conversar sobre inversiones, becas internas, convenios con empleadores y opciones de pago flexibles durante la llamada de orientación.',
     },
     {
         emoji: '5️⃣',
@@ -33,20 +33,24 @@ const menuSections = [
 
 const menuOptionResponses = {
     1: [
-        'ℹ️ Somos el Consejo de Enfermería y apoyamos a profesionales formados en México que desean validar su carrera en Estados Unidos.',
-        'Nuestro programa reúne evaluación de perfil, guía documental y acompañamiento experto en todo el proceso de homologación.',
+        'ℹ️ Somos el Consejo de Enfermería Alpha y Omega. Acompañamos a licenciados(as) de México y Latinoamérica para validar su título y ejercer como Registered Nurse en EE.UU.',
+        'Incluimos evaluación de perfil, plan personalizado para obtener el ATT y guía para que completes cada requisito ante la Board of Nursing correspondiente.',
+        'Desde el primer contacto te orientamos sobre tiempos estimados, cursos obligatorios y recursos de estudio para que avances con confianza.',
     ],
     2: [
-        '📄 Documentos clave: título y cédula profesional, certificado de estudios, identificación oficial, comprobantes de experiencia y traducciones certificadas.',
-        'Si algo falta, un asesor te indicará cómo completarlo durante la llamada de orientación.',
+        '📄 Documentos iniciales: título y cédula profesional, certificado de calificaciones, récord de horas teórico-prácticas y comprobantes de experiencia.',
+        'Te apoyamos con transcripciones oficiales, traducciones certificadas y antecedentes penales si son necesarios, siguiendo el orden de cada etapa hasta lograr tu ATT.',
+        'Coordinamos el envío de paquetes académicos a CGFNS/Board y verificamos que la documentación cumpla los estándares estadounidenses antes de cada entrega.',
     ],
     3: [
-        '🌟 Beneficios principales: mentoría personalizada, simulacros de examen con retroalimentación, guía en trámites migratorios básicos y asesoría para colocación laboral.',
-        'Adaptamos el plan a tu ritmo con sesiones en línea y materiales actualizados.',
+        '🌟 Beneficios: validación profesional en EE.UU., acceso a mejores oportunidades laborales y acompañamiento académico con simulacros del NCLEX-RN.',
+        'También contamos con alianzas para cursos, Visa Screen, orientación laboral y reclutamiento que acelera tu colocación.',
+        'Recibirás mentorías con enfermeros homologados, revisión de plan de estudios y sesiones para fortalecer inglés clínico y habilidades culturales.',
     ],
     4: [
-        '💳 Conversamos sobre inversión, becas internas y opciones de pago flexibles durante la llamada de orientación.',
-        'Así confirmamos que el programa encaje con tus objetivos y presupuesto antes de dar el siguiente paso.',
+        '💳 Revisamos la inversión total, becas internas y planes de financiamiento flexibles que se adaptan a tu situación.',
+        'Durante la llamada analizamos calendario de pagos, convenios disponibles y próximos pasos para que avances con seguridad.',
+        'Además, te orientamos sobre apoyos económicos externos, programas de reembolso laboral y cómo reservar tu lugar con anticipo accesible.',
     ],
     5: [
         '📞 Agenda una llamada de orientación para revisar tu caso y definir los pasos a seguir.',
