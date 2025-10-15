@@ -2451,7 +2451,7 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
             await state.update({
                 scheduling: {
                     ...scheduling,
-                    step: 'finalize',
+                    step: 'finalConfirmation',
                     data: {
                         ...scheduling.data,
                         notes,
@@ -2459,13 +2459,82 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 },
             })
 
-            return finalizeScheduling(ctx, tools, {
-                ...scheduling,
-                data: {
-                    ...scheduling.data,
-                    notes,
-                },
-            })
+            const dateParts = parseDateParts(scheduling.data?.date || '')
+            const timeParts = scheduling.data?.time
+                ? parseTimeParts(scheduling.data.time)
+                : null
+            const timeZone = scheduling.data?.timeZone || DEFAULT_TIMEZONE
+
+            const formattedDate = dateParts
+                ? formatDateForHumans(dateParts)
+                : scheduling.data?.date
+            const formattedTime = timeParts
+                ? formatTimeForHumans(timeParts)
+                : scheduling.data?.time
+
+            const confirmationMessages = []
+
+            confirmationMessages.push(
+                'Perfecto. Antes de terminar, necesito tu confirmación final.'
+            )
+
+            if (formattedDate && formattedTime) {
+                confirmationMessages.push(
+                    `¿Confirmas la cita el ${formattedDate} a las ${formattedTime} (${timeZone})?`
+                )
+            } else {
+                confirmationMessages.push(
+                    '¿Confirmas que la fecha y horario que elegimos son correctos?'
+                )
+            }
+
+            confirmationMessages.push(
+                'Responde “Sí” para agendarla o “No” para reiniciar y elegir otra fecha y horario.'
+            )
+
+            await sendChunkedMessages(flowDynamic, confirmationMessages, { ctx, provider })
+
+            return true
+        }
+        case 'finalConfirmation': {
+            const normalizedResponse = normalizeText(message)
+
+            if (
+                normalizedResponse &&
+                /^(si|claro|correcto|confirm(o|ar)?|agend(ar|a)?|agenda|dale|va|perfecto|ok|okay|de acuerdo|por supuesto)/.test(
+                    normalizedResponse
+                )
+            ) {
+                return finalizeScheduling(ctx, tools, scheduling)
+            }
+
+            if (
+                normalizedResponse &&
+                /^(no|otra|prefiero|cambiar|mejor|busco|otro|ninguno|cancelar)/.test(
+                    normalizedResponse
+                )
+            ) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    [
+                        'De acuerdo, reiniciemos el proceso de agendar para elegir una nueva fecha y horario.',
+                        'Comencemos de nuevo.',
+                    ],
+                    { ctx, provider }
+                )
+
+                await resetSchedulingState(state)
+
+                return startSchedulingFlow(ctx, { flowDynamic, state, provider })
+            }
+
+            await sendChunkedMessages(
+                flowDynamic,
+                'Solo necesito que confirmes si la fecha y horario seleccionados son correctos. Responde “Sí” para agendarla o “No” para reiniciar.',
+                { ctx, provider }
+            )
+
+            return true
         }
         default:
             await resetSchedulingState(state)
