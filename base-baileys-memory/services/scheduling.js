@@ -4,6 +4,7 @@ const {
     hasConflictingEvent,
     isCalendarConfigured,
     listCalendarEvents,
+    inviteAttendeeToEvent,
 } = require('./calendar')
 const { sendChunkedMessages } = require('./message-utils')
 
@@ -1024,6 +1025,12 @@ const BUSINESS_END_HOUR = 15
 
 const CANCEL_KEYWORDS = [/cancelar/i, /ya\s+no/i]
 
+const POSITIVE_CONFIRMATION_REGEX =
+    /^(si|claro|correcto|confirm(o|ar)?|agend(ar|a)?|agenda|dale|va|perfecto|ok|okay|de acuerdo|por supuesto)/
+
+const NEGATIVE_CONFIRMATION_REGEX =
+    /^(no|otra|prefiero|cambiar|mejor|busco|otro|ninguno|cancelar)/
+
 const AVAILABILITY_QUERY_PATTERNS = [
     /horarios?\s+disponibles?/i,
     /disponibilidad\s+de\s+horarios?/i,
@@ -1109,9 +1116,14 @@ const buildDescription = ({ name, email, notes, phone }) => {
     const lines = [
         'Cita agendada automáticamente desde WhatsApp.',
         `Nombre: ${name}`,
-        `Correo: ${email}`,
         `Teléfono: ${phone}`,
     ]
+
+    if (email) {
+        lines.splice(2, 0, `Correo: ${email}`)
+    } else {
+        lines.splice(2, 0, 'Correo: No proporcionado')
+    }
 
     if (notes) {
         lines.push(`Notas: ${notes}`)
@@ -1546,18 +1558,22 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
     }
 
     try {
+        const attendees = email
+            ? [
+                  {
+                      email,
+                      displayName: name,
+                  },
+              ]
+            : []
+
         const event = await createCalendarEvent({
             summary: buildSummary(name),
             description: buildDescription({ name, email, notes, phone }),
             startDateTime: startIso,
             endDateTime: endInfo.iso,
             timeZone: zone,
-            attendees: [
-                {
-                    email,
-                    displayName: name,
-                },
-            ],
+            attendees,
         })
 
         const confirmationMessages = [
@@ -1566,14 +1582,39 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
             )} a las ${formatTimeForHumans(timeParts)} (${zone}).`,
         ]
 
-        const extraDetails = [`Te enviaremos la confirmación al correo ${email}.`]
-        if (event.htmlLink) {
+        const extraDetails = ['Te recordaremos cuando la llamada esté cerca.']
+        if (event?.htmlLink) {
             extraDetails.push(`Puedes revisar el detalle aquí: ${event.htmlLink}`)
         }
 
         confirmationMessages.push(extraDetails.join(' '))
 
         await sendChunkedMessages(flowDynamic, confirmationMessages, { ctx, provider })
+
+        if (event?.id) {
+            await state.update({
+                scheduling: {
+                    step: 'offerEmailInvitation',
+                    data: {
+                        name,
+                        date,
+                        time,
+                        timeZone: zone,
+                        eventId: event.id,
+                        eventLink: event.htmlLink,
+                    },
+                },
+                availabilitySuggestions: null,
+            })
+
+            await sendChunkedMessages(
+                flowDynamic,
+                '¿Quieres que te enviemos la invitación a tu correo electrónico? Responde “Sí” o “No”.',
+                { ctx, provider }
+            )
+        } else {
+            await resetSchedulingState(state)
+        }
     } catch (error) {
         console.error('Error al crear evento en Google Calendar:', error)
 
@@ -1590,9 +1631,9 @@ const finalizeScheduling = async (ctx, tools, scheduling) => {
                 { ctx, provider }
             )
         }
-    }
 
-    await resetSchedulingState(state)
+        await resetSchedulingState(state)
+    }
 
     return true
 }
@@ -1610,41 +1651,10 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
         case 'collectName': {
             await state.update({
                 scheduling: {
-                    step: 'collectEmail',
-                    data: {
-                        ...scheduling.data,
-                        name: message,
-                    },
-                },
-            })
-
-            await sendChunkedMessages(
-                flowDynamic,
-                'Gracias. ¿Cuál es tu correo electrónico para enviarte la confirmación?',
-                { ctx, provider }
-            )
-
-            return true
-        }
-        case 'collectEmail': {
-            const email = message.toLowerCase()
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-            if (!emailRegex.test(email)) {
-                await sendChunkedMessages(
-                    flowDynamic,
-                    'Parece que el correo no es válido. Intenta nuevamente con un formato como nombre@dominio.com.',
-                    { ctx, provider }
-                )
-                return true
-            }
-
-            await state.update({
-                scheduling: {
                     step: 'collectDate',
                     data: {
                         ...scheduling.data,
-                        email,
+                        name: message,
                     },
                 },
             })
@@ -2499,21 +2509,11 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
         case 'finalConfirmation': {
             const normalizedResponse = normalizeText(message)
 
-            if (
-                normalizedResponse &&
-                /^(si|claro|correcto|confirm(o|ar)?|agend(ar|a)?|agenda|dale|va|perfecto|ok|okay|de acuerdo|por supuesto)/.test(
-                    normalizedResponse
-                )
-            ) {
+            if (normalizedResponse && POSITIVE_CONFIRMATION_REGEX.test(normalizedResponse)) {
                 return finalizeScheduling(ctx, tools, scheduling)
             }
 
-            if (
-                normalizedResponse &&
-                /^(no|otra|prefiero|cambiar|mejor|busco|otro|ninguno|cancelar)/.test(
-                    normalizedResponse
-                )
-            ) {
+            if (normalizedResponse && NEGATIVE_CONFIRMATION_REGEX.test(normalizedResponse)) {
                 await sendChunkedMessages(
                     flowDynamic,
                     [
@@ -2533,6 +2533,117 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
                 'Solo necesito que confirmes si la fecha y horario seleccionados son correctos. Responde “Sí” para agendarla o “No” para reiniciar.',
                 { ctx, provider }
             )
+
+            return true
+        }
+        case 'offerEmailInvitation': {
+            const normalizedResponse = normalizeText(message)
+
+            if (normalizedResponse && POSITIVE_CONFIRMATION_REGEX.test(normalizedResponse)) {
+                await state.update({
+                    scheduling: {
+                        ...scheduling,
+                        step: 'collectInvitationEmail',
+                    },
+                })
+
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Perfecto, ¿a qué correo electrónico quieres que enviemos la invitación?',
+                    { ctx, provider }
+                )
+
+                return true
+            }
+
+            if (normalizedResponse && NEGATIVE_CONFIRMATION_REGEX.test(normalizedResponse)) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Perfecto, gracias por agendar la llamada. Te recordaremos cuando la llamada esté cerca.',
+                    { ctx, provider }
+                )
+
+                await resetSchedulingState(state)
+
+                return true
+            }
+
+            await sendChunkedMessages(
+                flowDynamic,
+                'Solo dime si deseas que te enviemos la invitación por correo electrónico. Responde “Sí” o “No”, por favor.',
+                { ctx, provider }
+            )
+
+            return true
+        }
+        case 'collectInvitationEmail': {
+            const email = message.toLowerCase()
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+            if (!emailRegex.test(email)) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'Parece que el correo no es válido. Intenta nuevamente con un formato como nombre@dominio.com.',
+                    { ctx, provider }
+                )
+                return true
+            }
+
+            const eventId = scheduling?.data?.eventId
+
+            if (!eventId) {
+                await sendChunkedMessages(
+                    flowDynamic,
+                    'La cita está confirmada, pero no pude vincularla para enviar la invitación por correo. De todos modos te recordaremos cuando la llamada esté cerca.',
+                    { ctx, provider }
+                )
+
+                await resetSchedulingState(state)
+
+                return true
+            }
+
+            try {
+                await inviteAttendeeToEvent({
+                    eventId,
+                    attendees: [
+                        {
+                            email,
+                            displayName: scheduling?.data?.name || undefined,
+                        },
+                    ],
+                })
+
+                const successMessages = [`Perfecto, enviaremos la invitación a ${email}.`]
+
+                if (scheduling?.data?.eventLink) {
+                    successMessages.push(
+                        `También puedes revisar el evento en Google Calendar aquí: ${scheduling.data.eventLink}`
+                    )
+                }
+
+                successMessages.push('Gracias por agendar la llamada. Te recordaremos cuando la llamada esté cerca.')
+
+                await sendChunkedMessages(flowDynamic, successMessages, { ctx, provider })
+            } catch (error) {
+                console.error('Error al enviar invitación por correo:', error)
+
+                if (error.message === 'GOOGLE_CALENDAR_MISSING_CONFIG') {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'No logré enviar la invitación por correo porque falta completar la configuración de Google Calendar. La cita permanece agendada y te recordaremos cuando la llamada esté cerca.',
+                        { ctx, provider }
+                    )
+                } else {
+                    await sendChunkedMessages(
+                        flowDynamic,
+                        'No logré enviar la invitación por correo en este momento, pero tu cita sigue confirmada y te recordaremos cuando la llamada esté cerca.',
+                        { ctx, provider }
+                    )
+                }
+            }
+
+            await resetSchedulingState(state)
 
             return true
         }

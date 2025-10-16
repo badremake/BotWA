@@ -172,9 +172,47 @@ const hasConflictingEvent = async ({ startDate, endDate }) => {
     })
 }
 
+const inviteAttendeeToEvent = async ({ eventId, attendees = [] }) => {
+    if (!eventId) {
+        const error = new Error('GOOGLE_CALENDAR_EVENT_ID_REQUIRED')
+        error.code = 'EVENT_ID_MISSING'
+        throw error
+    }
+
+    const accessToken = await fetchAccessToken()
+    const calendarId = process.env.GOOGLE_CALENDAR_ID
+
+    const url = new URL(
+        `${CALENDAR_BASE_URL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
+    )
+    url.searchParams.set('sendUpdates', 'all')
+
+    const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ attendees }),
+    })
+
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        const errorMessage =
+            errorBody?.error?.message || `Error HTTP ${response.status}: ${response.statusText}`
+        const error = new Error(errorMessage)
+        error.code = response.status
+        error.details = errorBody
+        throw error
+    }
+
+    return response.json()
+}
+
 module.exports = {
     createCalendarEvent,
     isCalendarConfigured,
     hasConflictingEvent,
     listCalendarEvents,
+    inviteAttendeeToEvent,
 }
