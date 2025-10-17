@@ -2,3 +2,5 @@
 /base-baileys-memory/bot_sessions
 /base-baileys-memory/bot_sessions
 base-baileys-memory/bot.qr.png
+base-baileys-memory/.env
+base-baileys-memory/auth.js

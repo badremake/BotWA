@@ -2,26 +2,26 @@
   key: {
     remoteJid: '5219612953369@s.whatsapp.net',
     fromMe: false,
-    id: '3A787385A5AD78BDFC8F',
+    id: '3AA24FDB967B33F1DE36',
     participant: undefined
   },
-  messageTimestamp: 1759939293,
+  messageTimestamp: 1760723656,
   pushName: 'Andrés',
   broadcast: false,
   message: Message {
-    conversation: 'Hola',
+    conversation: 'Agendar cita',
     messageContextInfo: MessageContextInfo {
       deviceListMetadata: [DeviceListMetadata],
       deviceListMetadataVersion: 2,
       messageSecret: [Uint8Array]
     }
   },
-  body: 'Hola',
+  body: 'Agendar cita',
   from: '5219612953369'
 }
 [QUEUE_SE_ENVIO]:  {
-  ref: 'ans_2417d1f5-657c-4928-a022-3bf4e26408ee',
-  keyword: 'key_53aebee1-9da3-44e3-916c-aa4a30ce167d',
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
   answer: '__call_action__',
   options: {
     media: null,
@@ -35,16 +35,289 @@
     keyword: {},
     callback: true
   },
-  refSerialize: '6b82cce6ab4fab483387831ed7bcee0d'
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
 }
 [handleMsg]:  {
   key: {
     remoteJid: '5219612953369@s.whatsapp.net',
     fromMe: false,
-    id: '3ADA36A02478869AB5D6',
+    id: '3AA6205F6761C93C5C87',
     participant: undefined
   },
-  messageTimestamp: 1759939397,
+  messageTimestamp: 1760723661,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'Andrés',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Andrés',
+  from: '5219612953369'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3A574859AFA1CA8570DE',
+    participant: undefined
+  },
+  messageTimestamp: 1760723669,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'Hoy a las 13:00',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Hoy a las 13:00',
+  from: '5219612953369'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3AE015EC7C6F8031BFEA',
+    participant: undefined
+  },
+  messageTimestamp: 1760723684,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: '14:00',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: '14:00',
+  from: '5219612953369'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3AB0049F2BFB763DB6E3',
+    participant: undefined
+  },
+  messageTimestamp: 1760723691,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'No',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'No',
+  from: '5219612953369'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3AAEE82BA53344E9DDD0',
+    participant: undefined
+  },
+  messageTimestamp: 1760723699,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'Si',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Si',
+  from: '5219612953369'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3A73C4364B2A3157AB63',
+    participant: undefined
+  },
+  messageTimestamp: 1760723711,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'Si',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'Si',
+  from: '5219612953369'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3A9CD3A8AAF7B5FD9525',
+    participant: undefined
+  },
+  messageTimestamp: 1760723716,
+  pushName: 'Andrés',
+  broadcast: false,
+  message: Message {
+    conversation: 'couvel_99@hotmail.com',
+    messageContextInfo: MessageContextInfo {
+      deviceListMetadata: [DeviceListMetadata],
+      deviceListMetadataVersion: 2,
+      messageSecret: [Uint8Array]
+    }
+  },
+  body: 'couvel_99@hotmail.com',
+  from: '5219612953369'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
+  answer: '__call_action__',
+  options: {
+    media: null,
+    buttons: [],
+    capture: false,
+    child: null,
+    delay: 0,
+    idle: null,
+    ref: null,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
+}
+[handleMsg]:  {
+  key: {
+    remoteJid: '5219612953369@s.whatsapp.net',
+    fromMe: false,
+    id: '3AF117F34C905CF56744',
+    participant: undefined
+  },
+  messageTimestamp: 1760723899,
   pushName: 'Andrés',
   broadcast: false,
   message: Message {
@@ -59,8 +332,8 @@
   from: '5219612953369'
 }
 [QUEUE_SE_ENVIO]:  {
-  ref: 'ans_2417d1f5-657c-4928-a022-3bf4e26408ee',
-  keyword: 'key_53aebee1-9da3-44e3-916c-aa4a30ce167d',
+  ref: 'ans_1b623b67-fd6b-4f83-98bf-933af8626279',
+  keyword: 'key_6b07573f-1bc0-446a-bd5f-a028642e76f1',
   answer: '__call_action__',
   options: {
     media: null,
@@ -74,5 +347,5 @@
     keyword: {},
     callback: true
   },
-  refSerialize: '6b82cce6ab4fab483387831ed7bcee0d'
+  refSerialize: 'f7c920c930669bc7921298bd5f888f43'
 }

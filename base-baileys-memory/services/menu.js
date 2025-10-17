@@ -39,8 +39,8 @@ const menuOptionResponses = {
     ],
     2: [
         '📄 Documentos iniciales: título y cédula profesional, certificado de calificaciones, récord de horas teórico-prácticas y comprobantes de experiencia.',
-        'Te apoyamos con transcripciones oficiales, traducciones certificadas y antecedentes penales si son necesarios, siguiendo el orden de cada etapa hasta lograr tu ATT.',
-        'Coordinamos el envío de paquetes académicos a CGFNS/Board y verificamos que la documentación cumpla los estándares estadounidenses antes de cada entrega.',
+        ' Te apoyamos siguiendo el orden de cada etapa hasta lograr tu ATT.',
+        'Coordinamos el envío de paquetes académicos y verificamos que la documentación cumpla los estándares estadounidenses antes de cada entrega.',
     ],
     3: [
         '🌟 Beneficios: validación profesional en EE.UU., acceso a mejores oportunidades laborales y acompañamiento académico con simulacros del NCLEX-RN.',
