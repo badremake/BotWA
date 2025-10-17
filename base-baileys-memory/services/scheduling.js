@@ -2605,13 +2605,9 @@ const continueSchedulingFlow = async (ctx, tools, scheduling) => {
 
             try {
                 await inviteAttendeeToEvent({
-                    eventId,
-                    attendees: [
-                        {
-                            email,
-                            displayName: scheduling?.data?.name || undefined,
-                        },
-                    ],
+                eventId,
+                attendeeEmail: email,
+                attendeeName: scheduling?.data?.name || undefined,
                 })
 
                 const successMessages = [`Perfecto, enviaremos la invitación a ${email}.`]
